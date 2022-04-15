@@ -16,7 +16,8 @@ source(here("scripts/convenience_functions.R"))
 
 plots = read_excel(datadir("field-data/dispersal-data-entry-2021.xlsx"),sheet="plot_main") %>%
   mutate(date = as.character(date)) %>%
-  filter(! plot_id %in% c("S100-1","S100-2")) # these were entered twice, but with different names (one set with dash, one set without)
+  filter(! plot_id %in% c("S100-1","S100-2")) %>% # these were entered twice, but with different names (one set with dash, one set without)
+  filter(!(plot_id=="S027094" & entered_by == "Diego")) # this was entered twice by two differnt people
 
 plots[plots$plot_id == "T009", "date"] = "2021-07-02" # incorrectly recorded date
 
@@ -177,8 +178,11 @@ seedl_simp = seedl %>%
   select(plot_id,species,seedl_dens,cone_dens,seedwall_cone_dens) %>%
   # remove some types of cones that are not relevant
   ####!!!! #TODO decide if appropriate to exclude an eaten cone. Does it still represent overstory fecundity relevant to regen?
-  filter(!(species %in% c("EATEN PILA", "immature PIPO or PICO (open)"))) # exclude eaten becaues it is not a cone that dispersed seeds.
-
+  filter(!(species %in% c("immature PIPO or PICO (open)"))) %>% # exclude eaten becaues it is not a cone that dispersed seeds.
+  mutate(species = recode(species,"EATEN PILA" = "PILA")) %>%
+  group_by(plot_id,species) %>%
+  summarize(across(everything(),~sum(.x,na.rm=TRUE)))
+  
 # Compute total across all species (and also for pines and firs--incl douglas) for each plot and append
 
 seedl_tot = seedl %>%
@@ -213,6 +217,7 @@ seedl_firs = seedl %>%
   mutate(species = "FIRS")
 
 # exclude ambiguous species IDs. Assume the seedlings weren't there.
+###!!! TODO: test the sensitivity to this assumption
 seedl_simp = seedl_simp %>%
   filter(species %in% c("ABCO","CADE","PICO","PILA","PSME"))
 
@@ -222,7 +227,9 @@ seedl_comb = bind_rows(seedl_simp,seedl_tot,seedl_ylwpines,seedl_pines,seedl_fir
 ### todo: column for plot has species ambiguity. currently assuming zero counts for all plots with species ambiguity, and looking at it by PINES/FIRS
 
 
-# make wide
+## make wide
+# first make sure identifying cols are unique
+a = duplicated(paste0(seedl_comb$plot_id,seedl_comb$species))
 
 seedl_wide = pivot_wider(seedl_comb, id_cols = "plot_id", names_from = c("species"), values_from=c("seedl_dens","cone_dens","seedwall_cone_dens"))
 
@@ -233,21 +240,70 @@ seedl_wide = seedl_wide %>%
 ## TODO: check for mismatched plot names: plots that have NO records in the seedling table may be miswritten in one table or the other. Same for seedsource.
 
 
-### If a plot had zero seedwall cones for ALL species, then make all its seedwall cone entries for all species and species groups zero
+### If a plot had zero seedwall cone records (even zeros) for ALL species, then make all its seedwall cone entries for all species and species groups zero
 ## The reason is that some plots may not have had a seedwall cone plot surveyed.
 
-!!!
+no_seedwall_cone_records = seedl %>%
+  select(plot_id,seedwall_cones) %>%
+  mutate(has_seedwall_cone_entry = !is.na(seedwall_cones)) %>%
+  group_by(plot_id) %>%
+  summarize(n_spp_w_seedwall_cone_entries = sum(has_seedwall_cone_entry)) %>%
+  filter(n_spp_w_seedwall_cone_entries == 0) %>%
+  pull(plot_id)
 
+seedwall_cone_cols = grepl("seedwall_cone_dens",names(seedl_wide),)
+seedl_wide[seedl_wide$plot_id %in% no_seedwall_cone_records,seedwall_cone_cols] = NA
 
+# remove cone columns for species that don't have cones
+seedl_wide = seedl_wide %>%
+  select(-contains("cone_dens_ABCO"),
+         -contains("cone_dens_FIRS"),
+         -contains("cone_dens_CADE"))
 
+##TODO: if seedwall cones are blank, can we assume they are zero?
 
-
-
-
-## ^ with the above, we now have cones and seedlings by species and species group!
+## ^ with the above section, we now have cones and seedlings by species and species group!
 
 
 
 #### Process seed sources ####
 
-## Get the closest green tree overall and by species / species group
+## Get the closest green tree overall and by species / species group (assuming there is a tree just beyond where they could see)
+##!!TODO: assess sensitivity to assumption that there is a seed tree just beyond the ">" distance recorded
+
+green_seedsource = read_excel(datadir("field-data/dispersal-data-entry-2021.xlsx"),sheet="green_seedsource")
+
+dist_grn = green_seedsource %>%
+  select(-`(add cols for other spp)`,-`Notes`) %>%
+  mutate(across(any:`abco/abma`, ~ str_replace(.x,fixed(">"),""))) %>% # remove the ">" from distances
+  mutate(across(any:`abco/abma`, ~ ifelse(.x == "MISSING",NA,.x))) %>% # change "MISSING" to NA because that's OK for the one place it appears because on that plot they recorded distance to any species
+  filter(!is.na(plot_id),
+         metric == "distance") %>%
+  select(-metric) %>%
+  # within a plot, across cluster IDs, get the closest
+  group_by(plot_id) %>%
+  summarize(across(-cluster_id, ~ min(.x,na.rm=TRUE)))
+
+# make composite-species columns
+dist_grn = dist_grn %>%
+  mutate(ALL = pmin(any,pipj,pila,psme,abco,cade,`abco/abma`, na.rm=TRUE),
+         YLWPINES = pipj,
+         PINES = pmin(pipj,pila, na.rm=TRUE),
+         FIRS = pmin(psme,abco,`abco/abma`,na.rm=TRUE),
+         ABIES = pmin(abco,`abco/abma`, na.rm=TRUE)) %>%
+  select(-`abco/abma`, -any) ###!!! NOTE: dropping trees that were abco/abma ambiguous They are already incorporated into FIRS and ABIES. For analysis, need to keep in mind that can't use these plots for species-specific ABCO analysis. Or just do all analysis for ABIES.
+
+names(dist_grn) = toupper(names(dist_grn))  
+names(dist_grn)[names(dist_grn) == "PLOT_ID"] = "plot_id"
+
+#prepend "dist_grn_" to the seed dist cols
+names(dist_grn)[names(dist_grn) != "plot_id"] = paste0("dist_grn_",names(dist_grn)[names(dist_grn) != "plot_id"])
+
+
+
+#### Pull in seedlings/cones and dist_grn into the plot data
+
+
+
+
+
