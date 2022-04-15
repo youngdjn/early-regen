@@ -66,6 +66,20 @@ coords = coords %>%
 plots = left_join(plots,coords,by=c("plot_id" = "Name"))
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## If 
 
 
