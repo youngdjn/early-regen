@@ -14,7 +14,7 @@ source(here("scripts/convenience_functions.R"))
 
 #### Load plot data ####
 
-plots = read_excel(datadir("field-data/dispersal-data-entry-2021.xlsx"),sheet="plot_main") %>%
+plots = read_excel(datadir("field-data/raw/dispersal-data-entry-2021.xlsx"),sheet="plot_main") %>%
   mutate(date = as.character(date)) %>%
   filter(! plot_id %in% c("S100-1","S100-2")) %>% # these were entered twice, but with different names (one set with dash, one set without)
   filter(!(plot_id=="S027094" & entered_by == "Diego")) # this was entered twice by two differnt people
@@ -148,7 +148,18 @@ plots = plots %>%
 
 #### Load seedling data
 
-seedl = read_excel(datadir("field-data/dispersal-data-entry-2021.xlsx"), sheet="seedls_cones")
+seedl = read_excel(datadir("field-data/raw/dispersal-data-entry-2021.xlsx"), sheet="seedls_cones") %>%
+  # correct some plot IDs that don't match the main plot table
+  mutate(plot_id = recode(plot_id,
+                          "C062259" = "C062-259",
+                          "C062332" = "C062-332",
+                          "S012015" = "S102015",
+                          "S0427094" = "S027094",
+                          "S43B" = "S043B",
+                          "C38" = "C28",
+                          "S100-1" = "S1001"
+                          ))
+
 
 
 
@@ -242,6 +253,8 @@ seedl_wide = seedl_wide %>%
 
 ### If a plot had zero seedwall cone records (even zeros) for ALL species, then make all its seedwall cone entries for all species and species groups zero
 ## The reason is that some plots may not have had a seedwall cone plot surveyed.
+## TODO: see if there is a better way to determine whether it would have had a seedwall plot surveyed (e.g. all seedwall plots after a certain date?)
+##!! NOTE current approach is likely dropping some true zeros (dropping all seedwall cone counts from pltos that had no seedwall cones recorded)
 
 no_seedwall_cone_records = seedl %>%
   select(plot_id,seedwall_cones) %>%
@@ -254,7 +267,7 @@ no_seedwall_cone_records = seedl %>%
 seedwall_cone_cols = grepl("seedwall_cone_dens",names(seedl_wide),)
 seedl_wide[seedl_wide$plot_id %in% no_seedwall_cone_records,seedwall_cone_cols] = NA
 
-# remove cone columns for species that don't have cones
+# remove cone columns for species that don't produce cones
 seedl_wide = seedl_wide %>%
   select(-contains("cone_dens_ABCO"),
          -contains("cone_dens_FIRS"),
@@ -271,7 +284,16 @@ seedl_wide = seedl_wide %>%
 ## Get the closest green tree overall and by species / species group (assuming there is a tree just beyond where they could see)
 ##!!TODO: assess sensitivity to assumption that there is a seed tree just beyond the ">" distance recorded
 
-green_seedsource = read_excel(datadir("field-data/dispersal-data-entry-2021.xlsx"),sheet="green_seedsource")
+green_seedsource = read_excel(datadir("field-data/raw/dispersal-data-entry-2021.xlsx"),sheet="green_seedsource") %>%
+  # correct some plot IDs that don't match the main plot table
+  mutate(plot_id = recode(plot_id,
+                          "C062259" = "C062-259",
+                          "C062332" = "C062-332",
+                          "C38" = "C28"
+  ))
+
+
+
 
 dist_grn = green_seedsource %>%
   select(-`(add cols for other spp)`,-`Notes`) %>%
@@ -303,7 +325,43 @@ names(dist_grn)[names(dist_grn) != "plot_id"] = paste0("dist_grn_",names(dist_gr
 
 #### Pull in seedlings/cones and dist_grn into the plot data
 
+plots_seedl = left_join(plots,seedl_wide)
+# rows with NA for seedl and cone are true zeros
+
+# were there any seedl_cone records that didn't match plots?
+matched = (seedl_wide$plot_id) %in% plots_seedl$plot_id
+not_matched = seedl_wide[!matched,"plot_id"]
 
 
+plots_complete = left_join(plots_seedl,dist_grn)
+# lots of rows with NA for dist_grn that simply didn't have any grn recorded (bc not visible)
+
+# were there any dist_grn records that didn't match plots?
+matched = (dist_grn$plot_id) %in% plots_seedl$plot_id
+not_matched = dist_grn[!matched,"plot_id"]
+
+## make sure no plots are duplicated
+any(duplicated(plots_complete$plot_id))
+
+## Combine seedwall_dist with the green seed sources (all)? Actually don't need to since we'll be anlyzing seedwall plots separately.
+
+
+
+## for seedl_dens, and cone_dens (but not seedwall_cone_dens), set to 0 if NA
+# get the column numbers
+plots_complete = plots_complete %>%
+  mutate(across(starts_with("cone_dens_"), ~ifelse(is.na(.x),0,.x)  )) %>%
+  mutate(across(starts_with("seedl_dens_"), ~ifelse(is.na(.x),0,.x)  ))
+
+
+
+#### Compute 
+# 50 m cover (vol * predrop cov): % green, % brown
+plots_complete = plots_complete %>%
+  mutate(cov_brn_50m = vol_brn_50m * cov_predrop_50m / 100,
+         cov_grn_50m = vol_grn_50m * cov_predrop_50m / 100)
+
+
+write_csv(plots_complete,datadir("field-data/processed/plot_seedl_cone_grnseedsource.csv"))
 
 
