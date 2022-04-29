@@ -16,8 +16,63 @@ source(here("scripts/convenience_functions.R"))
 d = read_csv(datadir("field-data/processed/plot_seedl_cone_grnseedsource.csv"))
 
 
+inspect = d %>%
+  filter(toupper(plot_type) == "SEEDWALL")
 
-#### Core plots ####
+inspect = d %>%
+  select(fire, plot_id, seedl_dens_PINES, seedl_dens_YLWPINES)
+
+
+
+# for pines, firs, cade: get plots > 100 m from green seed source and get the proportion that had seedlings
+
+summarize_across_plots = function(data, species, seed_dist) {
+  
+  dist_grn_var = paste0("dist_grn_", species)
+  seedl_dens_var = paste0("seedl_dens_", species)
+  cone_dens_var = paste0("cone_dens_", species)
+  
+  # if we're asking for cones for a species that doesn't have cones, create a fake col with only NAs
+  if(!(cone_dens_var %in% names(data))) {
+    data[,cone_dens_var] = NA
+  }
+  
+  if(seed_dist == "gt100") {
+    focal_dist = data[,dist_grn_var] > 100 | is.na(data[,dist_grn_var]) # Confirm what NA means
+  } else if(seed_dist == "lt50") {
+    focal_dist = data[,dist_grn_var] < 50
+  } else if(seed_dist == "all") {
+    focal_dist = TRUE
+  }
+  
+  browser()
+  
+  summarized = data %>%
+    filter(focal_dist) %>%
+    mutate(seedl_present = .data[[seedl_dens_var]] > 0,
+           seedl_dens_var = .data[[seedl_dens_var]],
+           cone_dens_var = .data[[cone_dens_var]]) %>%
+    summarize(prop_recruitment = sum(seedl_present)/n(),
+              n_plots = n(),
+              mean_seedl_dens = mean(seedl_dens_var),
+              mean_cone_dens = mean(cone_dens_var),
+              mean_seedl_cone_ratio = mean_seedl_dens/mean_cone_dens,
+              mean_seedl_dens_present = mean(seedl_dens_var[seedl_dens_var > 0]),
+              mean_cone_dens_present = mean(cone_dens_var[seedl_dens_var > 0]), # mean cone density where the *seedlings* are present
+              # proportion of plots with seedlings present, by fire
+              prop_recruitment_august = sum(seedl_present & (fire == "August")) / sum(fire == "August"),
+              prop_recruitment_creek = sum(seedl_present & (fire == "Creek")) / sum(fire == "Creek"),
+              prop_recruitment_north = sum(seedl_present & (fire == "North")) / sum(fire == "North"),
+    ) %>%
+    mutate(across(everything(),~round(.x,3))) %>%
+    mutate(species = species)
+  
+  return(summarized)
+
+}
+
+
+#### For core plots
 
 # filter to core plots
 unique(d$plot_type)
@@ -27,106 +82,66 @@ core = d %>%
 # what's the range of distance to green?
 hist(core$dist_grn_ALL)
 
-# for pines, firs, cade: get plots > 100 m from green seed source and get the proportion that had seedlings
 
-# pines
-core_nogrn_pine = core %>%
-  filter(dist_grn_PINES > 100 | is.na(dist_grn_PINES)) %>%
-  mutate(seedl_present = seedl_dens_PINES > 0) %>%
-  summarize(prop_recruitment = sum(seedl_present)/n(),
-            n_plots = n(),
-            mean_seedl_dens = mean(seedl_dens_PINES),
-            mean_seedl_dens_present = mean(seedl_dens_PINES[seedl_dens_PINES > 0]),
-            # proportion of plots by fire
-            prop_recruitment_august = sum(seedl_present & (fire == "August")) / sum(fire == "August"),
-            prop_recruitment_creek = sum(seedl_present & (fire == "Creek")) / sum(fire == "Creek"),
-            prop_recruitment_north = sum(seedl_present & (fire == "North")) / sum(fire == "North"),
-            )
+core_nogrn_pine = summarize_across_plots(data = core, species = "PINES", seed_dist = "gt100")
+core_nogrn_fir = summarize_across_plots(data = core, species = "FIRS", seed_dist = "gt100")
+core_nogrn_cade = summarize_across_plots(data = core, species = "CADE", seed_dist = "gt100")
+core_nogrn_psme = summarize_across_plots(data = core, species = "PSME", seed_dist = "gt100")
+core_nogrn_ylwpines = summarize_across_plots(data = core, species = "YLWPINES", seed_dist = "gt100")
+core_nogrn_pila = summarize_across_plots(data = core, species = "PILA", seed_dist = "gt100")
 
-# firs
-core_nogrn_firs = core %>%
-  filter(dist_grn_FIRS > 100 | is.na(dist_grn_FIRS)) %>%
-  mutate(seedl_present = seedl_dens_FIRS > 0) %>%
-  summarize(prop_recruitment = sum(seedl_present)/n(),
-            n_plots = n(),
-            mean_seedl_dens = mean(seedl_dens_FIRS),
-            mean_seedl_dens_present = mean(seedl_dens_FIRS[seedl_dens_FIRS > 0]),
-            # proportion of plots by fire
-            prop_recruitment_august = sum(seedl_present & (fire == "August")) / sum(fire == "August"),
-            prop_recruitment_creek = sum(seedl_present & (fire == "Creek")) / sum(fire == "Creek"),
-            prop_recruitment_north = sum(seedl_present & (fire == "North")) / sum(fire == "North"),
-  )
+core_nogrn = bind_rows(core_nogrn_pine,
+                       core_nogrn_fir,
+                       core_nogrn_cade,
+                       core_nogrn_psme,
+                       core_nogrn_ylwpines,
+                       core_nogrn_pila) %>%
+  mutate(type = "core-nogreem")
 
 
-# cade
-core_nogrn_cade = core %>%
-  filter(dist_grn_CADE > 100 | is.na(dist_grn_CADE)) %>%
-  mutate(seedl_present = seedl_dens_CADE > 0) %>%
-  summarize(prop_recruitment = sum(seedl_present)/n(),
-            n_plots = n(),
-            mean_seedl_dens = mean(seedl_dens_CADE),
-            mean_seedl_dens_present = mean(seedl_dens_CADE[seedl_dens_CADE > 0]),
-            # proportion of plots by fire
-            prop_recruitment_august = sum(seedl_present & (fire == "August")) / sum(fire == "August"),
-            prop_recruitment_creek = sum(seedl_present & (fire == "Creek")) / sum(fire == "Creek"),
-            prop_recruitment_north = sum(seedl_present & (fire == "North")) / sum(fire == "North"),
-  )
+core_grn_pine = summarize_across_plots(data = core, species = "PINES", seed_dist = "lt50")
+core_grn_fir = summarize_across_plots(data = core, species = "FIRS", seed_dist = "lt50")
+core_grn_cade = summarize_across_plots(data = core, species = "CADE", seed_dist = "lt50")
+core_grn_psme = summarize_across_plots(data = core, species = "PSME", seed_dist = "lt50")
+core_grn_ylwpines = summarize_across_plots(data = core, species = "YLWPINES", seed_dist = "lt50")
+core_grn_pila = summarize_across_plots(data = core, species = "PILA", seed_dist = "lt50")
 
+core_grn = bind_rows(core_grn_pine,
+                       core_grn_fir,
+                       core_grn_cade,
+                       core_grn_psme,
+                       core_grn_ylwpines,
+                       core_grn_pila) %>%
+  mutate(type = "core-green")
 
-## Now for ones close to green
+#### For seed wall plots
 
-# pines
-core_grn_pine = core %>%
-  filter(dist_grn_PINES < 50) %>%
-  mutate(seedl_present = seedl_dens_PINES > 0) %>%
-  summarize(prop_recruitment = sum(seedl_present)/n(),
-            n_plots = n(),
-            mean_seedl_dens = mean(seedl_dens_PINES),
-            mean_seedl_dens_present = mean(seedl_dens_PINES[seedl_dens_PINES > 0]),
-            # proportion of plots by fire
-            prop_recruitment_august = sum(seedl_present & (fire == "August")) / sum(fire == "August"),
-            prop_recruitment_creek = sum(seedl_present & (fire == "Creek")) / sum(fire == "Creek"),
-            prop_recruitment_north = sum(seedl_present & (fire == "North")) / sum(fire == "North"),
-  )
+# filter to seed wall plots
+unique(d$plot_type)
+seedwall = d %>%
+  filter(toupper(plot_type) == "SEEDWALL")
 
-# firs
-core_grn_firs = core %>%
-  filter(dist_grn_FIRS < 50) %>%
-  mutate(seedl_present = seedl_dens_FIRS > 0) %>%
-  summarize(prop_recruitment = sum(seedl_present)/n(),
-            n_plots = n(),
-            mean_seedl_dens = mean(seedl_dens_FIRS),
-            mean_seedl_dens_present = mean(seedl_dens_FIRS[seedl_dens_FIRS > 0]),
-            # proportion of plots by fire
-            prop_recruitment_august = sum(seedl_present & (fire == "August")) / sum(fire == "August"),
-            prop_recruitment_creek = sum(seedl_present & (fire == "Creek")) / sum(fire == "Creek"),
-            prop_recruitment_north = sum(seedl_present & (fire == "North")) / sum(fire == "North"),
-  )
+seedwall_pine = summarize_across_plots(data = seedwall, species = "PINES", seed_dist = "all")
+seedwall_fir = summarize_across_plots(data = seedwall, species = "FIRS", seed_dist = "all")
+seedwall_cade = summarize_across_plots(data = seedwall, species = "CADE", seed_dist = "all")
+seedwall_psme = summarize_across_plots(data = seedwall, species = "PSME", seed_dist = "all")
+seedwall_ylwpines = summarize_across_plots(data = seedwall, species = "YLWPINES", seed_dist = "all")
+seedwall_pila = summarize_across_plots(data = seedwall, species = "PILA", seed_dist = "all")
 
-
-# cade
-core_grn_cade = core %>%
-  filter(dist_grn_CADE < 50) %>%
-  mutate(seedl_present = seedl_dens_CADE > 0) %>%
-  summarize(prop_recruitment = sum(seedl_present)/n(),
-            n_plots = n(),
-            mean_seedl_dens = mean(seedl_dens_CADE),
-            mean_seedl_dens_present = mean(seedl_dens_CADE[seedl_dens_CADE > 0]),
-            # proportion of plots by fire
-            prop_recruitment_august = sum(seedl_present & (fire == "August")) / sum(fire == "August"),
-            prop_recruitment_creek = sum(seedl_present & (fire == "Creek")) / sum(fire == "Creek"),
-            prop_recruitment_north = sum(seedl_present & (fire == "North")) / sum(fire == "North"),
-  )
+seedwall_grn = bind_rows(seedwall_pine,
+                         seedwall_fir,
+                         seedwall_cade,
+                         seedwall_psme,
+                         seedwall_ylwpines,
+                         seedwall_pila) %>%
+  mutate(type = "seedwall")
 
 
 
-
-## add mean cone densities to those tables ^
-## then repeat it all for seed wall
-
-
-
-
+summarized = bind_rows(core_grn,
+                       core_nogrn,
+                       seedwall_grn) %>%
+  select(type, species, everything())
 
 
 
@@ -167,11 +182,9 @@ ggplot(core_nogrn_fir,aes(x=cov_brn_50m, y = seedl_dens_FIRS)) +
 
 ## for seed wall: see if seedling:cone ratio is higher. Include % green or some metrics of seed wall density, or species comp
 
+### Qs for planning revisits:
+## How important to know the seedlings survived the first year?
+## Can we add some plots that are only surveyed in Yr 2? Will have dropped more needles. So, probably need to follow up on the Yr 1 ones to be able to back-estimate the brown canopy.
 
-## Qs for planning revisits: how important to know the seedlings survived the first year?
-
-
-## Can we add some plots that are only surveyed in Yr 2? For that, probably need to follow up on the Yr 1 ones.
-
-
-## For scouting: look for delayed mortality to make sure it happened. Because it if didn't, not worth sending the crew there yet (right??)
+### For scouting:
+## look for delayed mortality to make sure it happened. Because it if didn't, not worth sending the crew there yet (right??)
