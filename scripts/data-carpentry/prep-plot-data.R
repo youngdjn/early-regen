@@ -1,10 +1,13 @@
 # Purpose: Prepare manually entered plot data for analysis
 
+##!! TODO: make sure that scorched needle volume by species is being computed correctly
+
 library(tidyverse)
 library(here)
 library(sf)
 library(readxl)
 library(exifr)
+library(magrittr)
 
 # The root of the data directory
 data_dir = readLines(here("data_dir.txt"), n=1)
@@ -227,12 +230,20 @@ seedl_firs = seedl %>%
                    seedwall_cone_dens = sum(seedwall_cone_dens, na.rm=TRUE)) %>%
   mutate(species = "FIRS")
 
+seedl_abies = seedl %>%
+  filter(species %in% c("ABCO","ABCO/ABMA")) %>% ##!! NOTE this drops some abco/psme confused seedlings
+  group_by(plot_id) %>%
+  dplyr::summarize(seedl_dens = sum(seedl_dens, na.rm=TRUE),
+                   cone_dens = sum(cone_dens, na.rm=TRUE),
+                   seedwall_cone_dens = sum(seedwall_cone_dens, na.rm=TRUE)) %>%
+  mutate(species = "ABIES")
+
 # exclude ambiguous species IDs. Assume the seedlings weren't there.
 ###!!! TODO: test the sensitivity to this assumption
 seedl_simp = seedl_simp %>%
-  filter(species %in% c("ABCO","CADE","PICO","PILA","PSME"))
+  filter(species %in% c("ABCO","CADE","PICO","PILA","PSME","ABIES"))
 
-seedl_comb = bind_rows(seedl_simp,seedl_tot,seedl_ylwpines,seedl_pines,seedl_firs)
+seedl_comb = bind_rows(seedl_simp,seedl_tot,seedl_ylwpines,seedl_pines,seedl_firs, seedl_abies)
 
 ### todo: column for has seedwall cones measured
 ### todo: column for plot has species ambiguity. currently assuming zero counts for all plots with species ambiguity, and looking at it by PINES/FIRS
@@ -356,12 +367,86 @@ plots_complete = plots_complete %>%
 
 
 #### Compute 
-# 50 m cover (vol * predrop cov): % green, % brown
+# 50 m cover : % green, % scorched
 plots_complete = plots_complete %>%
-  mutate(cov_brn_50m = vol_brn_50m * cov_predrop_50m / 100,
-         cov_grn_50m = vol_grn_50m * cov_predrop_50m / 100)
+  mutate(scorched_cover_50m = cov_predrop_50m / 100,
+         scorched_vol_50m = vol_brn_50m / 100,
+         green_vol_prop_50m = vol_grn_50m / 100)
 
 
-write_csv(plots_complete,datadir("field-data/processed/plot_seedl_cone_grnseedsource.csv"))
+#### Pull in species comp of overstory, compute percent of green and brown by species and species groups
+sp_comp = read_excel(datadir("field-data/raw/dispersal-data-entry-2021.xlsx"), sheet="sp_comp+count") %>%
+  # correct some plot IDs that don't match the main plot table
+  mutate(plot_id = recode(plot_id,
+                          "C062259" = "C062-259",
+                          "C062332" = "C062-332",
+                          "C38" = "C28",
+                          "C0155166" = "C015166",
+                          "S37B" = "S73B",
+                          "T0007" = "T007"
+  ))
+  # remove a double-entered plot
+  
+
+# for green, get percent of the green by species (using green vol comp)
+# for brown, multiply brown cover by pre-drop species comp (using pre-drop cover)
+# also use overall pre-drop species comp by volume
+# so we need to get pre-drop vol and green vol by species and species group
+
+# make composite-species columns
+sp_comp = sp_comp %>%
+  filter(!(metric %in% c("predrop_n","green_n","green_n_in_plot","predrop_n_in_plot"))) %>%
+  mutate(across(pipj:pico, ~as.numeric(as.character(.x)))) %>%
+  rowwise() %>%
+  mutate(ALL = sum(pipj,pila,psme,abco,cade,`abco/abma`, `abco/psme`, pico, na.rm=TRUE),
+         YLWPINES = pipj,
+         PINES = sum(pipj,pila,pico, na.rm=TRUE),
+         FIRS = sum(psme,abco,`abco/abma`, `abco/psme`,na.rm=TRUE),
+         ABIES = sum(abco,`abco/abma`, na.rm=TRUE)) %>%
+  select(-`abco/abma`, -`abco/psme`, -`(add cols for other spp)`) %>% ###!!! NOTE: dropping trees that were abco/abma ambiguous They are already incorporated into FIRS and ABIES. For analysis, need to keep in mind that can't use these plots for species-specific ABCO analysis. Or just do all analysis for ABIES.
+  rename_with(~toupper(.), pipj:pico) %>%
+  unique() %>% # remove a row that was double-entered
+  pivot_wider(names_from=metric, values_from = c("PIPJ","PILA","PSME","ABCO","CADE","PICO","ALL","YLWPINES","PINES","FIRS","ABIES")) %>%
+  # if it's NA then assume it's 0
+  mutate(across(-plot_id,~ifelse(is.na(.x),0,.x)))
+
+# pull comp into plot data
+plots_w_comp = left_join(plots_complete,sp_comp)
+
+#check that the comp data matched the plot IDs of the main plot data
+check = plots_w_comp %>%
+  select(plot_id, ALL_predrop_cov, ALL_green_vol)
+
+# which comp data didn't match with a main plot?
+check2 = left_join(sp_comp,plots_complete) %>%
+  select(plot_id, date)
+
+# entries for comp without plot data:
+# S100-2 (was double-entered under a different ID with no dashes)
+# S100-1 (was double-entered under a different ID with no dashes)
+
+
+####!! if the plot is a core plot and had some vol brown overall (vol_brn_50m), but ALL_predrop_cov is 0 and it's not a seedwall plot, set all the predrop covers to -5 because it means it was not entered properly
+## same for green ^
+####!!NOTE TODO need to re-enter these from the paper datasheets
+
+which_incomplete_predrop = (plots_w_comp$vol_brn_50m > 1) & (plots_w_comp$ALL_predrop_cov == 0) & (toupper(plots_w_comp$plot_type) == "CORE")
+which_incomplete_green = (plots_w_comp$vol_grn_50m > 1) & (plots_w_comp$ALL_green_vol == 0) & (toupper(plots_w_comp$plot_type) == "CORE")
+
+plots_w_comp[which_incomplete_predrop | which_incomplete_green,] %<>%
+  mutate(across(ends_with(c("_cov","_vol")),~-5))
+
+
+## To get species-specific green, multiply *_green_vol by green_vol_prop_50m: this is "proportion of the prefire canopy that is green for species" and "proprotion of the pre
+## To get species-specific scorched, multiply *_predrop_cov by scorched_cover_50m: this is "proportion of the scorched canopy cover that is composed of species X"
+
+plots_w_comp = plots_w_comp %>%
+  mutate(across(ends_with("_green_vol"), ~.x*green_vol_prop_50m/100, .names = "{.col}_abs")) %>%
+  mutate(across(ends_with("_predrop_cov"), ~.x*scorched_cover_50m/100, .names = "{.col}_abs")) %>%
+  mutate(across(ends_with("_predrop_vol"), ~.x*scorched_vol_50m/100, .names = "{.col}_abs"))
+
+
+
+write_csv(plots_w_comp,datadir("field-data/processed/plot_seedl_cone_grnseedsource_comp.csv"))
 
 
