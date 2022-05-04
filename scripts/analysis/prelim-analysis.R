@@ -71,7 +71,7 @@ summarize_across_plots = function(data, species, seed_dist) {
               prop_recruitment_creek = sum(seedl_present & (fire == "Creek")) / sum(fire == "Creek"),
               prop_recruitment_north = sum(seedl_present & (fire == "North")) / sum(fire == "North"),
     ) %>%
-    mutate(across(everything(),~round(.x,3))) %>%
+    mutate(across(everything(),~round(.x,5))) %>%
     mutate(species = species)
   
   return(summarized)
