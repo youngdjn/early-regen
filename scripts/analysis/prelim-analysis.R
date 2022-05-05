@@ -194,7 +194,7 @@ ggplot(core_nogrn_pine,aes(x=YLWPINES_predrop_cov_abs, y = seedl_dens_YLWPINES))
        title = "YELLOW PINES: Green trees > 50 m away") +
   theme_bw()
 
-# For yellow pines: cone density
+# For yellow pines: seedl/cone ratio
 core_nogrn_pine = core %>%
   filter(dist_grn_YLWPINES > 100 | is.na(dist_grn_YLWPINES))
 
@@ -204,6 +204,46 @@ ggplot(core_nogrn_pine,aes(x=YLWPINES_predrop_cov_abs, y = seedl_dens_YLWPINES/c
   labs(x = "Overstory *scorched* yellow pine cover (%)",
        y = "Yellow pine seedling/cone ratio",
        title = "YELLOW PINES: Green trees > 50 m away") +
+  theme_bw()
+
+# For yellow pines: cone density
+core_nogrn_pine = core %>%
+  filter(dist_grn_YLWPINES > 100 | is.na(dist_grn_YLWPINES))
+
+core_nogrn_pine = core_nogrn_pine %>%
+  mutate(cone_dens_YLWPINES = ifelse(cone_dens_YLWPINES == 0, 0.0015,cone_dens_YLWPINES),
+         seedl_dens_YLWPINES = ifelse(seedl_dens_YLWPINES == 0, 0.0015,seedl_dens_YLWPINES)
+
+ggplot(core_nogrn_pine,aes(x=log(cone_dens_YLWPINES), y = log(seedl_dens_YLWPINES))) +
+  geom_point() +
+  geom_smooth(method=lm) +
+  labs(x = "Yellow pine cone density (cones / sq m)",
+       y = "Yellow pine seedling seedling density (seedl / sq m)",
+       title = "YELLOW PINES: Green trees > 50 m away") +
+  theme_bw()
+
+# For PINES: cone density
+core_nogrn_pine = core %>%
+  filter(dist_grn_PINES > 100 | is.na(dist_grn_PINES))
+
+ggplot(core_nogrn_pine,aes(x=log(cone_dens_PINES), y = log(seedl_dens_PINES))) +
+  geom_point() +
+  geom_smooth(method=lm) +
+  labs(x = "Pine cone density (cones / sq m)",
+       y = "Pine seedling seedling density (seedl / sq m)",
+       title = "PINES: Green trees > 50 m away") +
+  theme_bw()
+
+# For PSME: cone density
+core_nogrn_pine = core %>%
+  filter(dist_grn_PSME > 100 | is.na(dist_grn_PSME))
+
+ggplot(core_nogrn_pine,aes(x=cone_dens_PSME, y = seedl_dens_PSME)) +
+  geom_point() +
+  geom_smooth(method=lm) +
+  labs(x = "Yellow pine cone density (cones / sq m)",
+       y = "Yellow pine seedling seedling density (seedl / sq m)",
+       title = "PSME: Green trees > 50 m away") +
   theme_bw()
 
 # For yellow pine needle volume
