@@ -212,13 +212,13 @@ core_nogrn_pine = core %>%
 
 core_nogrn_pine = core_nogrn_pine %>%
   mutate(cone_dens_YLWPINES = ifelse(cone_dens_YLWPINES == 0, 0.0015,cone_dens_YLWPINES),
-         seedl_dens_YLWPINES = ifelse(seedl_dens_YLWPINES == 0, 0.0015,seedl_dens_YLWPINES)
+         seedl_dens_YLWPINES = ifelse(seedl_dens_YLWPINES == 0, 0.0015,seedl_dens_YLWPINES))
 
 ggplot(core_nogrn_pine,aes(x=log(cone_dens_YLWPINES), y = log(seedl_dens_YLWPINES))) +
   geom_point() +
   geom_smooth(method=lm) +
-  labs(x = "Yellow pine cone density (cones / sq m)",
-       y = "Yellow pine seedling seedling density (seedl / sq m)",
+  labs(x = "log Yellow pine cone density (cones / sq m)",
+       y = "log Yellow pine seedling seedling density (seedl / sq m)",
        title = "YELLOW PINES: Green trees > 50 m away") +
   theme_bw()
 
