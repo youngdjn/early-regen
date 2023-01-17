@@ -1,4 +1,4 @@
-# Purpose: Initial analysis of potential fac serot for first-year plots surveyed in 2022
+# Purpose: Preliminary plot data analysis to inform 2022 revisits
 
 library(tidyverse)
 library(here)
