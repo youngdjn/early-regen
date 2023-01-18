@@ -1,6 +1,7 @@
 # Purpose: Prepare manually entered plot data for analysis
 
 ##!! TODO: make sure that scorched needle volume by species is being computed correctly
+## TODO: Fix two 2022 plots that have wrong coords
 
 library(tidyverse)
 library(here)
@@ -504,12 +505,11 @@ plots_w_comp = plots_w_comp %>%
 
 dob = vrt(list.files(datadir("day-of-burning-rasters/"), pattern="tif$", full.names=TRUE))
 
-plots_sp = st_as_sf(plots_w_comp |> select(plot_id, lat, lon), coords=c("lon","lat"), crs="EPSG:4326")
+plots_sp = st_as_sf(plots_w_comp, coords=c("lon","lat"), crs="EPSG:4326")
 
 dob_extract = extract(dob, plots_sp |> st_transform(st_crs(dob)))[,2]
 plots_w_comp$day_of_burning = dob_extract
+plots_sp$day_of_burning = dob_extract
 
-
-write_csv(plots_w_comp,datadir("field-data/processed/plot_seedl_cone_grnseedsource_comp.csv"))
-
-
+write_csv(plots_w_comp, datadir("field-data/processed/plot_seedl_cone_grnseedsource_comp.csv"))
+st_write(plots_sp, datadir("field-data/processed/early-regen-2022.gpkg"), delete_dsn = TRUE)
