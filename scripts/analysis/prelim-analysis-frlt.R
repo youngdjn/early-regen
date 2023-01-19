@@ -23,13 +23,34 @@ unique(d$fire)
 d = d |>
   filter(fire %in% c("Caldor", "Dixie"))
 
-## PINES
+
+## ALL CONIFERS
 d_nogrn_sp = d |>
-  filter(PINES_green_vol_abs == 0,
-         (prefire_prop_pipj + prefire_prop_pila + prefire_prop_pico + prefire_prop_pimo) > 20,
+  filter(ALL_green_vol_abs == 0,
          plot_type %in% c("core","delayed"))
 
 ## alternate way to get plots far from seed sources
+d_nogrn_sp = d |>
+  filter(ALL_green_vol_abs == 0,
+         ((is.na(dist_grn_ALL) | dist_grn_ALL > 100) & as.numeric(sight_line) > 75),
+         plot_type %in% c("core","delayed"))
+
+
+d_sw_sp = d|>
+  filter(plot_type == "seedwall")
+
+ggplot(d_nogrn_sp, aes(x = day_of_burning, y = ifelse(seedl_dens_ALL > 2, 2, seedl_dens_ALL))) +
+  geom_jitter(data = d_sw_sp, color="green", size=3, width=2) +
+  geom_jitter(size=3, width=2) +
+  facet_grid(~fire) +
+  #scale_color_viridis_c(limits=c(0,.5)) +
+  theme_bw(15) +
+  labs(x = "Day of Burning", y = "Seedlings / sq m")
+
+
+
+## PINES
+
 d_nogrn_sp = d |>
   filter(PINES_green_vol_abs == 0,
          ((is.na(dist_grn_PINES) | dist_grn_PINES > 100) & as.numeric(sight_line) > 75),
@@ -131,18 +152,49 @@ ggplot(d_nogrn_sp, aes(x=sqrt(under_cones_new_PINES), y = sqrt(seedl_dens_PINES)
 d_nogrn_sp = d |>
   filter(YLWPINES_green_vol_abs == 0,
          (prefire_prop_pipj) > 20,
-         plot_type %in% c("core","delayed"))
+         plot_type %in% c("core","delayed")) |>
+  mutate(under_cones_YLWPINES = recode(under_cones_new_YLWPINES, "0" = "None", "1" = "Low", "2" = "High")) |>
+  mutate(under_cones_YLWPINES = factor(under_cones_YLWPINES, levels=c("None","Low","High"))) |>
+  filter(!(is.na(under_cones_YLWPINES)))
 
 ggplot(d_nogrn_sp, aes(x=sqrt(cone_dens_YLWPINES), y = sqrt(seedl_dens_YLWPINES))) +
-  geom_point()
+  geom_point(size=2) +
+  geom_smooth(method = lm) +
+  theme_bw(15) +
+  labs(x = "Cones / sq m", y = "Seedlings / sq m")
 
-ggplot(d_nogrn_sp, aes(x=sqrt(under_cones_new_YLWPINES), y = sqrt(seedl_dens_YLWPINES))) +
-  geom_point()
+ggplot(d_nogrn_sp, aes(x=under_cones_YLWPINES, y = sqrt(seedl_dens_YLWPINES))) +
+  geom_point() +
+  geom_point(size=2) +
+  geom_smooth(method = lm) +
+  theme_bw(15) +
+  labs(x = "Relative pine cone density in vicinity", y = "Seedlings / sq m")
+
 
 m = lm(seedl_dens_YLWPINES~cone_dens_YLWPINES, d = d_nogrn_sp)
 summary(m)
 
 ######## In core area: seedling density relative to overstory torch
+
+## ALL conifers
+d_nogrn_sp = d |>
+  filter(ALL_green_vol_abs == 0,
+         ((is.na(dist_grn_ALL) | dist_grn_ALL > 100) & as.numeric(sight_line) > 75), # this makes it a little worse here
+         plot_type %in% c("core","delayed"))
+
+ggplot(d_nogrn_sp |> mutate(seedl_dens_ALL = ifelse(seedl_dens_ALL > 5, 5, seedl_dens_ALL)), aes(x = vol_brn_50m, y = seedl_dens_ALL)) +
+  geom_point(size = 2) +
+  theme_bw(16) +
+  labs(x = "Scorched canopy (%)", y = "Conifer seedlings / sq m")
+
+ggplot(d_nogrn_sp, aes(x = vol_brn_50m, y = seedl_dens_PINES)) +
+  geom_point()
+
+m = lm(seedl_dens_PINES ~ vol_brn_50m, d = d_nogrn_sp)
+summary(m)
+
+
+
 ## PINES
 d_nogrn_sp = d |>
   filter(PINES_green_vol_abs == 0,
@@ -184,7 +236,9 @@ d_nogrn_sp = d |>
          plot_type %in% c("core","delayed"))
 
 ggplot(d_nogrn_sp, aes(x = ABCO_untorched_vol_abs, y = seedl_dens_ABCO)) +
-  geom_point()
+  geom_point(size = 2) +
+  theme_bw(16) +
+  labs(x = "Scorched fir canopy (%)", y = "White fir seedlings / sq m")
 
 ggplot(d_nogrn_sp, aes(x = vol_brn_50m, y = seedl_dens_ABCO)) +
   geom_point()
@@ -286,7 +340,7 @@ ggplot(newdat, aes(x = day_of_burning, y = fit, color = scorch)) +
 
 d_nogrn_sp = d |>
   filter(ABCO_green_vol_abs == 0,
-         ((is.na(dist_grn_YLWPINES) | dist_grn_YLWPINES > 100) & as.numeric(sight_line) > 75), # this makes it a little worse here
+         ((is.na(dist_grn_ABCO) | dist_grn_ABCO > 100) & as.numeric(sight_line) > 75), # this makes it a little worse here
          (prefire_prop_abco) > 10,
          plot_type %in% c("core","delayed"))
 
@@ -318,6 +372,64 @@ untorched_med = data.frame(ABCO_untorched_vol_abs = 0.4,
 untorched_high = data.frame(ABCO_untorched_vol_abs = 0.7,
                             day_of_burning = 200:255,
                             cone_dens_ABCO = 0.4,
+                            scorch = "high")
+
+newdat = bind_rows(untorched_low,
+                   untorched_med,
+                   untorched_high)
+
+newdat$scorch = factor(newdat$scorch, levels = c("high", "mod","low"))
+
+preds = predict(m,newdat, type = "response")
+
+newdat$fit = preds
+
+ggplot(newdat, aes(x = day_of_burning, y = fit, color = scorch)) +
+  geom_line(size=2) +
+  theme_bw(15) +
+  scale_color_viridis_d(end=0.8, option = "magma", direction = -1) +
+  labs(x = "Day of burning", y = "Seedlings / sq m")
+
+
+
+
+
+
+### ALL conifers
+
+d_nogrn_sp = d |>
+  filter(ALL_green_vol_abs == 0,
+         ((is.na(dist_grn_ALL) | dist_grn_ALL > 100) & as.numeric(sight_line) > 75), # this makes it a little worse here
+         plot_type %in% c("core","delayed"))
+
+m = gam(seedl_dens_ALL ~ day_of_burning + ALL_untorched_vol_abs, data = d_nogrn_sp)
+summary(m)
+
+m = gam(seedl_dens_ALL ~ s(day_of_burning, k=3) + s(ALL_untorched_vol_abs, k=3), data = d_nogrn_sp)
+summary(m)
+
+m = gam(round(seedl_dens_ALL) ~ te(day_of_burning, ALL_untorched_vol_abs, k = c(3,3)), data = d_nogrn_sp, family = poisson())
+summary(m)
+
+plot(m, pers=TRUE, too.far=0.25)
+
+
+
+
+
+## Make prediction plots for the DOB-untorched vol model
+
+untorched_low = data.frame(ALL_untorched_vol_abs = 0.1,
+                           day_of_burning = 200:255,
+                           cone_dens_ALL = 0.4,
+                           scorch = "low")
+untorched_med = data.frame(ALL_untorched_vol_abs = 0.4,
+                           day_of_burning = 200:255,
+                           cone_dens_ALL = 0.4,
+                           scorch = "mod")
+untorched_high = data.frame(ALL_untorched_vol_abs = 0.7,
+                            day_of_burning = 200:255,
+                            cone_dens_ALL = 0.4,
                             scorch = "high")
 
 newdat = bind_rows(untorched_low,
