@@ -28,6 +28,13 @@ plots = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.xlsx"),shee
   
 plots[plots$plot_id == "T009", "date"] = "2021-07-02" # incorrectly recorded date
 
+## incorrectly recorded plot coordinates
+plots[plots$plot_id == "C12-007", "lon"] = -121.28285
+plots[plots$plot_id == "S032-545", "lat"] = 38.58434
+# the plot below seems to have been created by accidentally renaming an existing waypoint from the Creek Fire, so I pulled the coords from the photos instead.
+plots[plots$plot_id == "C041-500", "lat"] = 38.622276
+plots[plots$plot_id == "C041-500", "lon"] = -120.521693
+
 #### NOTE that Derek manually corrected the entered data gsheet for plot D014-232 because there were two plots wtih this name. The second occurrence of this plot name was changed to D014-932
 
 #### Load plot coords ####
@@ -513,3 +520,11 @@ plots_sp$day_of_burning = dob_extract
 
 write_csv(plots_w_comp, datadir("field-data/processed/plot_seedl_cone_grnseedsource_comp.csv"))
 st_write(plots_sp, datadir("field-data/processed/early-regen-2022.gpkg"), delete_dsn = TRUE)
+
+## Save a version with plot_id only
+d_save = plots_sp |>
+  filter(fire == "Caldor") |>
+  select(plot_id)
+
+st_write(d_save, datadir("field-data/processed/for-collabs/UCDavis_Young_Caldor_2022.gpkg"), delete_dsn = TRUE)
+st_write(d_save, datadir("field-data/processed/for-collabs/UCDavis_Young_Caldor_2022.shp"), delete_dsn = TRUE)
