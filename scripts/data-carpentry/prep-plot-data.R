@@ -1,7 +1,6 @@
 # Purpose: Prepare manually entered plot data for analysis
 
 ##!! TODO: make sure that scorched needle volume by species is being computed correctly
-## TODO: Fix two 2022 plots that have wrong coords
 
 library(tidyverse)
 library(here)
@@ -17,14 +16,14 @@ data_dir = readLines(here("data_dir.txt"), n=1)
 source(here("scripts/convenience_functions.R"))
 
 
-#### Load plot data ####
+#### Load plot data and correct some entry errors ####
 
 plots = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.xlsx"),sheet="plot_main") %>%
   mutate(date = as.character(date)) %>%
-  filter(! plot_id %in% c("S100-1","S100-2")) %>% # these were entered twice, but with different names (one set with dash, one set without)
+  filter(! plot_id %in% c("S100-1","S100-2")) %>% # these two plots were entered twice, but with different names (one set with dash, one set without, so remove the one with)
   filter(!(plot_id=="S027094" & entered_by == "Diego")) |> # this was entered twice by two differnt people
   # drop plots that were not surveyed (no camrea recorded)
-  filter(!is.na(camera))
+  filter(!is.na(camera)) # there were some rows for "unsurveyed  plots" but we can just remove them. The camera field is always blank for them so filter with that column.
   
 plots[plots$plot_id == "T009", "date"] = "2021-07-02" # incorrectly recorded date
 
@@ -35,9 +34,11 @@ plots[plots$plot_id == "S032-545", "lat"] = 38.58434
 plots[plots$plot_id == "C041-500", "lat"] = 38.622276
 plots[plots$plot_id == "C041-500", "lon"] = -120.521693
 
-#### NOTE that Derek manually corrected the entered data gsheet for plot D014-232 because there were two plots wtih this name. The second occurrence of this plot name was changed to D014-932
+## NOTE that Derek manually corrected the entered data gsheet for plot D014-232 because there were two plots wtih this name. The second occurrence of this plot name was changed to D014-932
 
 #### Load plot coords ####
+
+#### First from Emlid for 2021 plots
 
 files = list.files(datadir("emlid-plot-coords"),full.names=TRUE)
 
@@ -57,7 +58,6 @@ coords = coords %>%
 # See if any points were taken more than one time
 duplicated(coords$Name)
 # no
-
 
 coords = coords %>%
   # correct some gps IDs to match plot IDs
@@ -129,39 +129,47 @@ for(i in 1:nrow(plots)) {
   
 }
 
-## create a compiled lat/long column (from Emlid if present, otherwise photo EXIF) and a column indicating if coords from photos
+## create a compiled lat/long column for 2021 plots (from Emlid if present, otherwise photo EXIF) and a column indicating if coords are from photo EXIF or from Emlid
+# The exported Emlid coords use Northing and Easting
 plots = plots %>%
   mutate(pre_lat = ifelse(!is.na(Northing),Northing,photo_lat),
          pre_lon = ifelse(!is.na(Easting),Easting,photo_lon),
          coords_from_photo = is.na(Northing) | is.na(Easting))
 
 ## merge lat/lon from above with lat/lon entered on datasheets (from Garmin GPS)
+# lat/lon were fields on the datasheet starting in 2022, so if they were NA, that means they were 2021 plots
 plots = plots %>%
-  mutate(coords_from_gps = is.na(lat) | is.na(lon),
+  mutate(coords_from_gps = is.na(lat) | is.na(lon), #record that coords were from GPS
          lat = ifelse(is.na(lat),pre_lat,lat),
          lon = ifelse(is.na(lon),pre_lon,lon))
 
 
-####!!!! Temporary! Keep only 2022 surveyed plots
+####!!!! Temporary! Keep only 2022 surveyed plots. When we add 2021 plots, we will need to keep in mind that some 2022 plots were resurveys of 2021 plots and have the same plot name.
+#           We will also need to make sure all the data prep steps below work properly on the full dataset
 
 plots = plots |>
   filter(date > "2022-01-01")
 
-# Check for duplicated plots
+# Make sure there are no duplicated plots
 plots_duplicated = plots |>
   mutate(duplicated = duplicated(plot_id)) |>
   select(plot_id, duplicated)
 
 
-
-#### Prep prefire prop by species
-# Set it to 0 if it is NA
-# TODO: figure out why there are non-numeric entries that cause "NAs introduced by coersion"
+#### Prep prefire prop by species (only collected 2022). This is a series of fields that have the estimated proportion of prefire BA by species (one field per species)
+# Set it to 0 if it is NA (because NAs mean 0)
+# One plot did not have this entered. Need this to remain as NA so this plot gets omitted from analyses that require this data
 plots = plots |>
-  mutate(across(starts_with("prefire_prop_"), ~ifelse(is.na(as.numeric(.x)), 0, .x)))
+  mutate(across(starts_with("prefire_prop_"), ~ifelse(is.na(.x), "0", .x))) |> # make NAs zer0s
+  mutate(across(starts_with("prefire_prop_"), ~ifelse(.x == "MISSING", NA, .x))) |> # make the MISSING fields NAs
+  mutate(across(starts_with("prefire_prop_"), as.numeric))         
+  
+# Make sure these fields look good
+inspect = plots |>
+  select(plot_id, starts_with("prefire_prop_"))
 
 
-
+#### Summarize data in ways useful for research questions ####
 
 ### Question 1:
 
@@ -169,9 +177,8 @@ plots = plots |>
 # In core area, what plots had conifer regen?
 # In core area, how did regen relate to % green and % brown?
 # In core area, how did regen relate to cone count?
-# Version of is with plots > 100 m from green trees
+# Version of this with plots > 100 m from green trees
 # Consider adding species comp of green and brown
-# 
 #   
 # SEED WALL
 # In seed wall area, what plots had seedlings?
@@ -181,12 +188,12 @@ plots = plots |>
 
 # To answer this, need:
 # Plot coords
-# Plot:
+# Plot-level:
 # Total seedlings, seedlings by species
 # 50 m volume: % green, % brown
-# 50 m cover (vol * predrop cov): % green, % brown
+# NOTE that we stopped collecting untorched ("pre-drop") cover partway through 2022 because we realized that the 2021 crew had been collecting it wrong, by recording this as a percentage of total pre-fire tree cover, not as an absolute percent cover
 # Cones by species
-# Seed source: minimum of all options (drop ">")
+# Seed source: minimum of all options (drop ">" which means there may be trees beyond this distance by they were not seen so we don't know)
 
 
 #### Load seedling data
@@ -203,49 +210,64 @@ seedl = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.xlsx"), she
                           "S100-1" = "S1001",
                           "S035-551" = "C035-551"
                           )) |>
-  select(1:12)
+  select(1:13) |> # there were some extra mostly-empty columns I think with some notes, so keep only the relevant columns
+  mutate(year = as.numeric(year))
 
-
+## TEMPORARILY thin to 2022 data only
+seedl = seedl |>
+  filter(year == 2022)
 
 
 #### Prep seedling data
-####!!!! #TODO: Set "+" seedlings counts (and presumably those that are a round number like 400) as the midpoint of the categories??
-####!!!! TODO: Why does S039-158 have a psme radius of 0? Assuming it's supposed to be 10.
+####!!!! #TODO: For 2021 data, we recorded seedlings (and cones?) in categories like "100+" but then entered the data as "100". For analyzing the 2021 data, set "+" seedling/cone counts (round numbers at the floor of each bin) as the midpoint of the bin?? May also need set 2022 counts similarly to avoid bias.
+####!!!! #TODO: When bringing in 2021 data, need to make sure that we match the observations to the correct years.
+####!!!! TODO: Why does 2022 plot S039-158 have a psme radius of 0? Assuming below it's supposed to be 10. Need to check
 
-## Have to assume the two instances of calling cones_new "H" was about 15 cones
-
+## CAVEAT Have to assume the two instances of calling cones_new "H" was about 15 cones (for new cones within the plot)
 seedl[which(seedl$cones_new == "H"),"cones_new"] = "15"
+
 
 # Compute seedlings/sqm and cones/sqm, filter anomalously entered values
 seedl = seedl %>%
-  mutate(radius = ifelse(radius == "n/a" | radius == "MISSING", 8, radius),
-         cones_new = recode(cones_new,"50+" = "50","n/a"="0"),
-         cones_old = recode(cones_old,"50+" = "50","n/a"="0"),
-         species = recode(species,"ANY" = "PIPJ"), # this is a record to show they surveyed the plot but found nothing. So change to an actual species (won't affect count because count is 0)
-         seedwall_cones = recode(seedwall_cones, "No, too steep" = "na", "MISSING" = "na")) %>%
-  mutate(across(c("seedlings_0yr", "seedlings_1yr", "caches", "cones_new", "cones_old", "seedwall_cones"), ~str_replace(., fixed("+"), ""))) |>
-  # a plot radius listed as "Q" means one quadrant of the smallest plot size (4 m). So give it the radius of a circular plot with equivalent area (2 m)
+  mutate(radius = ifelse(radius == "n/a" | radius == "MISSING", 8, radius), # if no radius entered, the default was 8 m
+         cones_new = recode(cones_new,"50+" = "75","n/a"="0"), # 50+ was a notation from 2021, I think only used for one plot
+         cones_old = recode(cones_old,"50+" = "50","n/a"="0"), # 50+ was a notation from 2021, I think only for one plot
+         species = recode(species,"ANY" = "PIPJ"), # In 2021, sometimes (one plot?) they put species "ANY" and entered 0 as a record to show they surveyed the plot but found nothing. So change to an actual species so it gets processed properly (won't affect count because count is 0 whever "ANY" is used)
+         seedwall_cones = recode(seedwall_cones, "No, too steep" = "na", "MISSING" = "na")) %>% # When they didn't record data for seed wall (I think just 2021), store as NA instead of 0. First store as "na" which will get set to real NA just below
+  # Some 2022 seedl_0yr counts were recorded as 200+ and 400+. Recode as the midpoint of the categories (250 and 450).
+  mutate(seedlings_0yr = recode(seedlings_0yr, "200+" = "250", "400+" = "450")) |>
+  # no longer need this because we dealt with all the "+" properly (but confirm): mutate(across(c("seedlings_0yr", "seedlings_1yr", "caches", "cones_new", "cones_old", "seedwall_cones"), ~str_replace(., fixed("+"), ""))) |>
+  # a plot radius listed as "Q" (always from 2022) means one quadrant of the smallest plot size (4 m). So give it the radius of a circular plot with equivalent area (2 m)
   mutate(radius = recode(radius, "Q" = "2", "q" = "2")) |>
-  mutate(under_cones_new = recode(under_cones_new, "H" = "2", "L" = "1")) |>
-  mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "under_cones_new"), ~as.numeric(as.character(.)))) |>
-  mutate(radius = ifelse(radius == .0, 10, radius)) |> ## TODO: note this quick fix to address with comment above
-
+  mutate(under_cones_new = recode(under_cones_new, "H" = "2", "L" = "1")) |> # Change letter coding for "high" and "low" to number levels
+  # #### FOR FINDING THE NON-NUMERIC VALUES (e.g., counts ending in "+"):
+  # mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "under_cones_new"), ~ifelse(is.na(.), "0", .))) |> # set all NAs to a number so that the next step will reveal which were non-numeric (because they'll get set to NAs) # TODO: If we eventually want to ask about cones-old and caches, we need to take care of this for those columns too.
+  mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "under_cones_new"), ~as.numeric(as.character(.)))) |> # Convert everything to numeric
+  mutate(radius = ifelse(radius == .0, 10, radius)) |> ## TODO: note this quick fix to address comment above
   mutate(seedl_dens = seedlings_0yr / (3.14*radius^2),
          cone_dens = cones_new / (3.14*8^2))
-  
-seedl[which(seedl$seedwall_cones == "na"),"seedwall_cones"] = NA
 
+# Set our placeholder "na" for seedwall cones to a true NA, make numeric and compute density
+seedl[which(seedl$seedwall_cones == "na"),"seedwall_cones"] = NA
 seedl = seedl %>%
   mutate(seedwall_cones = as.numeric(seedwall_cones),
-         seedwall_cone_dens = seedwall_cones / (3.14*8^2))
+         seedwall_cone_dens = seedwall_cones / (3.14*8^2)) # cones were always counted in the 8 m plots
 
+## DEREK: get which fire the seedl are from so we can remove creek. first need to select only unique plotid-fire pairs.
+
+# Get just the columns that are relevant, and remove irrelevant rows
 seedl_simp = seedl %>%
   select(plot_id,species,seedl_dens,cone_dens,under_cones_new) %>%
   # remove some types of cones that are not relevant
-  ####!!!! #TODO decide if appropriate to exclude an eaten cone. Does it still represent overstory fecundity relevant to regen?
   filter(!(species %in% c("immature PIPO or PICO (open)"))) %>% # exclude eaten becaues it is not a cone that dispersed seeds.
-  mutate(species = recode(species,"EATEN PILA" = "PILA")) %>%
+  # We are excluding stripped cones (only one recorded) from the cone count, with the logic that this fecundity was not relevant to regen
+  filter(species != "EATEN PILA") %>%
   group_by(plot_id,species) %>%
+  mutate(dup = duplicated(plot_id, species))
+  ## TODO: for processing revisit data (including 2022 revisits of Creek), here is where we will need to deal with the fact that some plots have two different counts for each species, for both radii
+
+  # DEREK: need to filter out Creek data temporarily
+
   summarize(across(everything(),~sum(.x,na.rm=TRUE)))
   
 # Compute total across all species (and also for pines and firs--incl douglas) for each plot and append
