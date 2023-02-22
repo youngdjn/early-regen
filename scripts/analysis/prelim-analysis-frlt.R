@@ -10,18 +10,42 @@ source(here("scripts/convenience_functions.R"))
 
 
 ## By species (YELLOWPINES, PINES, ABCO, PSME, CADE)
-# Take all plots with no green within 50m
+# Take all plots with no green within 100m
 # Plot seedling density vs burn date, color points by nearby cone density
 
 ## Compare with seed wall seedling density
 
-d = read_csv(datadir("field-data/processed/plot_seedl_cone_grnseedsource_comp.csv"))
+d = read_csv(datadir("field-data/processed/plot-data-prepped.csv"))
 
-# Thin to Caldor and Dixie only
+# Thin to Caldor and Dixie 2022 only
 unique(d$fire)
 
 d = d |>
   filter(fire %in% c("Caldor", "Dixie"))
+
+# Exclude Dixie plots with precip > 1375
+d = d |>
+  filter(fire == "Caldor" | ppt < 1375)
+
+
+#### Explore data ranges ####
+
+## Precip by date burned
+
+ggplot(d, aes(x=day_of_burning, y = tmean, color = fire)) +
+  geom_point()
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ## ALL CONIFERS
@@ -32,9 +56,8 @@ d_nogrn_sp = d |>
 ## alternate way to get plots far from seed sources
 d_nogrn_sp = d |>
   filter(ALL_green_vol_abs == 0,
-         ((is.na(dist_grn_ALL) | dist_grn_ALL > 100) & as.numeric(sight_line) > 75),
+         ((is.na(dist_grn_ALL) | dist_grn_ALL > 100) & as.numeric(sight_line) > 100),
          plot_type %in% c("core","delayed"))
-
 
 d_sw_sp = d|>
   filter(plot_type == "seedwall")
@@ -53,7 +76,7 @@ ggplot(d_nogrn_sp, aes(x = day_of_burning, y = ifelse(seedl_dens_ALL > 2, 2, see
 
 d_nogrn_sp = d |>
   filter(PINES_green_vol_abs == 0,
-         ((is.na(dist_grn_PINES) | dist_grn_PINES > 100) & as.numeric(sight_line) > 75),
+         ((is.na(dist_grn_PINES) | dist_grn_PINES > 100) & as.numeric(sight_line) > 100),
          (prefire_prop_pipj + prefire_prop_pila + prefire_prop_pico + prefire_prop_pimo) > 20,
          plot_type %in% c("core","delayed"))
 
@@ -144,9 +167,9 @@ ggplot(d_nogrn_sp, aes(x=sqrt(cone_dens_PINES), y = sqrt(seedl_dens_PINES))) +
   theme_bw(15) +
   labs(x = "Cones / sq m", y = "Seedlings / sq m")
 
-ggplot(d_nogrn_sp, aes(x=sqrt(under_cones_new_PINES), y = sqrt(seedl_dens_PINES))) +
-  geom_point() +
-  theme_bw(3)
+ggplot(d_nogrn_sp, aes(x=under_cones_new_PINES, y = sqrt(seedl_dens_PINES), group = under_cones_new_PINES)) +
+  geom_boxplot(width = 0.1) +
+  theme_bw(12)
 
 ## YLWPINES
 d_nogrn_sp = d |>
@@ -198,7 +221,7 @@ summary(m)
 ## PINES
 d_nogrn_sp = d |>
   filter(PINES_green_vol_abs == 0,
-         ((is.na(dist_grn_PINES) | dist_grn_PINES > 100) & as.numeric(sight_line) > 75), # this makes it a little worse here
+         ((is.na(dist_grn_PINES) | dist_grn_PINES > 100) & as.numeric(sight_line) > 100), # this makes it a little worse here
          (prefire_prop_pipj + prefire_prop_pila + prefire_prop_pico + prefire_prop_pimo) > 20,
          plot_type %in% c("core","delayed"))
 
@@ -350,7 +373,7 @@ summary(m)
 m = gam(seedl_dens_ABCO ~ s(day_of_burning, k=3) + s(ABCO_untorched_vol_abs, k=3), data = d_nogrn_sp)
 summary(m)
 
-m = gam(round(seedl_dens_ABCO) ~ te(day_of_burning, ABCO_untorched_vol_abs, k = c(3,3)), data = d_nogrn_sp, family = poisson())
+m = gam(round(seedl_dens_ABCO) ~ te(day_of_burning, ABCO_untorched_vol_abs, k = c(3,3)) + s(tmean, k=3), data = d_nogrn_sp, family = poisson())
 summary(m)
 
 plot(m, pers=TRUE, too.far=0.25)
@@ -399,7 +422,7 @@ ggplot(newdat, aes(x = day_of_burning, y = fit, color = scorch)) +
 
 d_nogrn_sp = d |>
   filter(ALL_green_vol_abs == 0,
-         ((is.na(dist_grn_ALL) | dist_grn_ALL > 100) & as.numeric(sight_line) > 75), # this makes it a little worse here
+         ((is.na(dist_grn_ALL) | dist_grn_ALL > 100) & as.numeric(sight_line) > 100), # this makes it a little worse here
          plot_type %in% c("core","delayed"))
 
 m = gam(seedl_dens_ALL ~ day_of_burning + ALL_untorched_vol_abs, data = d_nogrn_sp)
@@ -447,3 +470,10 @@ ggplot(newdat, aes(x = day_of_burning, y = fit, color = scorch)) +
   theme_bw(15) +
   scale_color_viridis_d(end=0.8, option = "magma", direction = -1) +
   labs(x = "Day of burning", y = "Seedlings / sq m")
+
+
+
+## TO DO: GAMs for each fire separately. Also try excluding/including the high-precip Dixie plots.
+# Do for pines and abies
+# Set outliers to highest non-outlier value
+# Consider transforming vars? Probably centering and standardizing at least.
