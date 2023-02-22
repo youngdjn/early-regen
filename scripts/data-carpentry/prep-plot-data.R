@@ -34,6 +34,12 @@ plots[plots$plot_id == "S032-545", "lat"] = 38.58434
 plots[plots$plot_id == "C041-500", "lat"] = 38.622276
 plots[plots$plot_id == "C041-500", "lon"] = -120.521693
 
+## One plot was erroneously recorded as "core" even though it's seedwall
+plots[plots$plot_id == "S02-282", "plot_type"] = "seedwall"
+
+## One seed wall plot had sight line listed as "missing" but distance to a dense seedwall was < 30 m so put sight line as 30 m
+plots[plots$plot_id == "S039-157", "sight_line"] = "30"
+
 ## NOTE that Derek manually corrected the entered data gsheet for plot D014-232 because there were two plots wtih this name. The second occurrence of this plot name was changed to D014-932
 
 #### Load plot coords ####
@@ -144,11 +150,12 @@ plots = plots %>%
          lon = ifelse(is.na(lon),pre_lon,lon))
 
 
-####!!!! Temporary! Keep only 2022 surveyed plots. When we add 2021 plots, we will need to keep in mind that some 2022 plots were resurveys of 2021 plots and have the same plot name.
+####!!!! Temporary! Keep only 2022 surveyed plots, Caldor and Dixie only. When we add 2021 plots (and 2022 Creek), we will need to keep in mind that some 2022 plots were resurveys of 2021 plots and have the same plot name.
 #           We will also need to make sure all the data prep steps below work properly on the full dataset
 
 plots = plots |>
-  filter(date > "2022-01-01")
+  filter(date > "2022-01-01") |>
+  filter(fire %in% c("Caldor", "Dixie"))
 
 # Make sure there are no duplicated plots
 plots_duplicated = plots |>
@@ -217,10 +224,23 @@ seedl = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.xlsx"), she
 seedl = seedl |>
   filter(year == 2022)
 
+#### TEMPORARY filtering to only Caldor and Dixie from 2022
+# Get which fire the seedl are from so we can remove creek. first need to select only unique plotid-fire pairs.
+plotid_fire = plots |>
+  select(plot_id, fire) |>
+  unique() # this line would only become necessary when there are revisits in the plot dataset
+
+# Pull in the fire name to the seedling data
+seedl = left_join(seedl, plotid_fire)
+
+# Exclude Creek
+seedl = seedl |>
+  filter(fire != "Creek")
+
 
 #### Prep seedling data
-####!!!! #TODO: For 2021 data, we recorded seedlings (and cones?) in categories like "100+" but then entered the data as "100". For analyzing the 2021 data, set "+" seedling/cone counts (round numbers at the floor of each bin) as the midpoint of the bin?? May also need set 2022 counts similarly to avoid bias.
-####!!!! #TODO: When bringing in 2021 data, need to make sure that we match the observations to the correct years.
+####!!!! #TODO for 2021 data: For 2021 data, we recorded seedlings (and cones?) in categories like "100+" but then entered the data as "100". For analyzing the 2021 data, set "+" seedling/cone counts (round numbers at the floor of each bin) as the midpoint of the bin?? May also need set 2022 counts similarly to avoid bias.
+####!!!! #TODO for 2021 data: When bringing in 2021 data, need to make sure that we match the observations to the correct years.
 ####!!!! TODO: Why does 2022 plot S039-158 have a psme radius of 0? Assuming below it's supposed to be 10. Need to check
 
 ## CAVEAT Have to assume the two instances of calling cones_new "H" was about 15 cones (for new cones within the plot)
@@ -230,8 +250,8 @@ seedl[which(seedl$cones_new == "H"),"cones_new"] = "15"
 # Compute seedlings/sqm and cones/sqm, filter anomalously entered values
 seedl = seedl %>%
   mutate(radius = ifelse(radius == "n/a" | radius == "MISSING", 8, radius), # if no radius entered, the default was 8 m
-         cones_new = recode(cones_new,"50+" = "75","n/a"="0"), # 50+ was a notation from 2021, I think only used for one plot
-         cones_old = recode(cones_old,"50+" = "50","n/a"="0"), # 50+ was a notation from 2021, I think only for one plot
+         cones_new = recode(cones_new,"50+" = "75","n/a"="0"), # 50+ was a notation from 2021, I think only used for one plot (generally when entering data, they omitted the + and any round number was assumed to represent the lower end of the density class assigned to the plot)
+         cones_old = recode(cones_old,"50+" = "75","n/a"="0"), # 50+ was a notation from 2021, I think only used for one plot
          species = recode(species,"ANY" = "PIPJ"), # In 2021, sometimes (one plot?) they put species "ANY" and entered 0 as a record to show they surveyed the plot but found nothing. So change to an actual species so it gets processed properly (won't affect count because count is 0 whever "ANY" is used)
          seedwall_cones = recode(seedwall_cones, "No, too steep" = "na", "MISSING" = "na")) %>% # When they didn't record data for seed wall (I think just 2021), store as NA instead of 0. First store as "na" which will get set to real NA just below
   # Some 2022 seedl_0yr counts were recorded as 200+ and 400+. Recode as the midpoint of the categories (250 and 450).
@@ -253,24 +273,22 @@ seedl = seedl %>%
   mutate(seedwall_cones = as.numeric(seedwall_cones),
          seedwall_cone_dens = seedwall_cones / (3.14*8^2)) # cones were always counted in the 8 m plots
 
-## DEREK: get which fire the seedl are from so we can remove creek. first need to select only unique plotid-fire pairs.
 
-# Get just the columns that are relevant, and remove irrelevant rows
+# Get just the columns that are relevant, and remove irrelevant rows (like immature cones)
 seedl_simp = seedl %>%
   select(plot_id,species,seedl_dens,cone_dens,under_cones_new) %>%
   # remove some types of cones that are not relevant
-  filter(!(species %in% c("immature PIPO or PICO (open)"))) %>% # exclude eaten becaues it is not a cone that dispersed seeds.
+  filter(!(species %in% c("immature PIPO or PICO (open)"))) %>% # exclude because it is not a cone that dispersed seeds.
   # We are excluding stripped cones (only one recorded) from the cone count, with the logic that this fecundity was not relevant to regen
   filter(species != "EATEN PILA") %>%
   group_by(plot_id,species) %>%
-  mutate(dup = duplicated(plot_id, species))
-  ## TODO: for processing revisit data (including 2022 revisits of Creek), here is where we will need to deal with the fact that some plots have two different counts for each species, for both radii
-
-  # DEREK: need to filter out Creek data temporarily
-
+  mutate(dup = duplicated(plot_id, species)) |>
+  ## TODO for 2021: for processing revisit data (including 2022 revisits of Creek), here is where we will need to deal with the fact that some plots have two different counts for each species, for both radii
   summarize(across(everything(),~sum(.x,na.rm=TRUE)))
-  
-# Compute total across all species (and also for pines and firs--incl douglas) for each plot and append
+
+
+### Get seedling/cone tallies by species / species group  
+# Compute total seedl and cones across all species, then by species groups, and bind all by columns into a table
 
 seedl_tot = seedl_simp %>%
   group_by(plot_id) %>%
@@ -280,7 +298,7 @@ seedl_tot = seedl_simp %>%
   mutate(species = "ALL")
 
 seedl_pines = seedl_simp %>%
-  filter(species %in% c("PICO","PIJE","PILA","PILA/PIPJ","PIPJ","PIPJ/PILA","PIPO","PIxx","PIXX", "PI-", "PIMO")) %>%
+  filter(species %in% c("PICO","PIJE","PILA","PILA/PIPJ","PIPJ","PIPJ/PILA","PIPO","PIxx","PIXX", "PI-", "PIMO")) %>% # many of the species ambiguities were recorded in 2021 data only
   group_by(plot_id) %>%
   dplyr::summarize(seedl_dens = sum(seedl_dens, na.rm=TRUE),
                    cone_dens = sum(cone_dens, na.rm=TRUE),
@@ -295,16 +313,18 @@ seedl_ylwpines = seedl_simp %>%
                    under_cones_new = max(under_cones_new, na.rm=TRUE)) %>%
   mutate(species = "YLWPINES")
 
+# "firs" including Douagls-fir
 seedl_firs = seedl_simp %>%
-  filter(species %in% c("ABCO","ABCO/ABMA","ABCO/PSME","PSME")) %>%
+  filter(species %in% c("ABCO","ABCO/ABMA","ABCO/PSME","PSME")) %>%  # many of the species ambiguities were recorded in 2021 data only
   group_by(plot_id) %>%
   dplyr::summarize(seedl_dens = sum(seedl_dens, na.rm=TRUE),
                    cone_dens = sum(cone_dens, na.rm=TRUE),
                    under_cones_new = max(under_cones_new, na.rm=TRUE)) %>%
   mutate(species = "FIRS")
 
+# true firs
 seedl_abies = seedl_simp %>%
-  filter(species %in% c("ABCO","ABCO/ABMA", "ABMA")) %>% ##!! NOTE this drops one occurrence of abco/psme ambiguous seedlings
+  filter(species %in% c("ABCO","ABCO/ABMA", "ABMA")) %>% ##!! NOTE this drops one occurrence of abco/psme ambiguous seedlings (2021 only)
   group_by(plot_id) %>%
   dplyr::summarize(seedl_dens = sum(seedl_dens, na.rm=TRUE),
                    cone_dens = sum(cone_dens, na.rm=TRUE),
@@ -312,29 +332,34 @@ seedl_abies = seedl_simp %>%
   mutate(species = "ABIES")
 
 
-# Get the species-specific observations: exclude ambiguous species IDs. Assume the seedlings weren't there.
-###!!! TODO: test the sensitivity to this assumption
+# Get the species-specific observations: exclude ambiguous species IDs. This assumes the ambiguous species were not there. We should test the sensitivty to this assumption. For 2022 Dixie/Creek, there was only 1 plot with an ambiguous pine
 seedl_simp = seedl_simp %>%
   filter(species %in% c("ABCO","CADE","PICO","PILA","PSME"))
 
 seedl_comb = bind_rows(seedl_simp,seedl_tot,seedl_ylwpines,seedl_pines,seedl_firs, seedl_abies)
 
-### todo: column for has seedwall cones measured
-### todo: column for plot has species ambiguity. currently assuming zero counts for all plots with species ambiguity, and looking at it by PINES/FIRS
+## Is there seedling data for every plot?
+plot_ids = unique(plots$plot_id)
+seedl_plot_ids = unique(seedl_simp$plot_id)
+plots_no_seedlings = setdiff(plot_ids, seedl_plot_ids)
+seedlings_no_plots = setdiff(seedl_plot_ids, plot_ids)
+# Looks like C22-019 had no seedling data. Check datasheet to see if it was skipped in entering
 
 
-## make wide
+### TODO for 2021: Add a column for "this plot did not have seed wall cone density recorded", so we could optionally exclude those plots
+### TODO in for 2021 and Creek: If would be useful in analysis, add a column for "plot has species ambiguity", so we could optionally exclude plots that have species ambiguity, rather than assuming 0 seedlings there. This may need to indicate what type(s) of species ambiguity because for some types we would not need to exclude the plot (e.g. PIJE/PILA if analysis is of PINES).
+
+
+## Make seedling/cone table wide (a col for each species / species group)
 # first make sure identifying cols are unique
 a = duplicated(paste0(seedl_comb$plot_id,seedl_comb$species))
 sum(a)
 
 seedl_wide = pivot_wider(seedl_comb, id_cols = "plot_id", names_from = c("species"), values_from=c("seedl_dens","cone_dens","under_cones_new"))
 
-# cols with NAs are zeros
+# Species counts that are NA are zero
 seedl_wide = seedl_wide %>%
   mutate(across(everything(),~ ifelse(is.na(.x),0,.x)))
-
-## TODO: check for mismatched plot names: plots that have NO records in the seedling table may be miswritten in one table or the other. Same for seedsource.
 
 
 # The code commented out here is only needed for 2021 surveys:
@@ -355,13 +380,14 @@ seedl_wide = seedl_wide %>%
 # seedwall_cone_cols = grepl("seedwall_cone_dens",names(seedl_wide),)
 # seedl_wide[seedl_wide$plot_id %in% no_seedwall_cone_records,seedwall_cone_cols] = NA
 
-# remove cone columns for species that don't produce cones
+# TODO for 2021: The "under_cones_new" column from 2022 was similar to the "seedwall_cones" entry from 2021: possibly merge into a single column?
+
+
+# Remove cone columns for species that don't produce cones
 seedl_wide = seedl_wide %>%
   select(-contains("cone_dens_ABCO"),
          -contains("cone_dens_FIRS"),
          -contains("cone_dens_CADE"))
-
-##TODO: if seedwall cones are blank, can we assume they are zero?
 
 ## ^ with the above section, we now have cones and seedlings by species and species group!
 
@@ -370,7 +396,7 @@ seedl_wide = seedl_wide %>%
 #### Process seed sources ####
 
 ## Get the closest green tree overall and by species / species group (assuming there is a tree just beyond where they could see)
-##!!TODO: assess sensitivity to assumption that there is a seed tree just beyond the ">" distance recorded
+## TODO: assess sensitivity to assumption that there is a seed tree just beyond the ">" distance recorded
 
 green_seedsource = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.xlsx"),sheet="green_seedsource") %>%
   # correct some plot IDs that don't match the main plot table
@@ -382,34 +408,63 @@ green_seedsource = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.
   )) |>
   filter(!is.na(plot_id))
 
+## NOTE: In the data entry sheet for this table, DY manually removed a second identical instance of entered data for C038-229. It came right after the entry for C038-226.
 
+## TEMPORARILY filter to 2022 data only, exclude Creek
+green_seedsource = green_seedsource |>
+  filter(year == 2022)
 
+green_seedsource = left_join(green_seedsource, plotid_fire)
+green_seedsource = green_seedsource |>
+  filter(fire %in% c("Caldor", "Dixie")) |>
+  select(-fire)
+
+## Any duplicated? If so, need to fix because probably means incorrectly entered.
+inspect = green_seedsource |>
+  filter(metric == "distance",
+         cluster_id == 1)
+
+inspect = inspect |>
+  mutate(duplicated = duplicated(inspect$plot_id))
+
+## Is there a green seed source entry for every plot? To make sure properly entered
+plot_ids = unique(plots$plot_id)
+grnsrc_plot_ids = unique(green_seedsource$plot_id)
+
+plots_no_grnsrc = setdiff(plot_ids, grnsrc_plot_ids) # yes, there were many plots for which green seedsource was not entered -- plots with no green visible. That's ok.
+grnsrc_no_plot = setdiff(grnsrc_plot_ids, plot_ids)
 
 dist_grn = green_seedsource %>%
-  select(-`(add cols for other spp)`,-`Notes`) %>%
-  mutate(across(any:`abco/abma`, ~ str_replace(.x,fixed(">"),""))) %>% # remove the ">" from distances
-  mutate(across(any:`abco/abma`, ~ ifelse(.x == "MISSING",NA,.x))) %>% # change "MISSING" to NA because that's OK for the one place it appears because on that plot they recorded distance to any species
+  select(-`(add cols for other spp)`,-`Notes`) %>% # remove some data entry columns
   filter(!is.na(plot_id),
-         metric == "distance") %>%
+         metric == "distance") %>% # remove empty rows and remove the "number in cluster" (ntrees) rows
+  mutate(across(any:`abco/abma`, ~ str_replace(.x,fixed(">"),""))) %>% # remove the ">" from distances (although this doesn't actually exist for 2022)
+  # TODO for 2021: review the meaning of ">" for seed source distances and determine if we need to make a column noting whether there was a >. For 2022, it is taken care of with the column "sight_line". Review whether we can do the same thing for 2021. Perhaps we could use the ">" for 2021 to indicate the sight line, and use that as we use the explicit "sight_line" attribute from 2022.
+  mutate(across(any:`abco/abma`, ~ ifelse(.x == "MISSING",NA,.x))) %>% # change "MISSING" to NA because that's OK for the one place it appears (which was in 2021) because on that plot they recorded distance to any species. TODO for 2021: make sure that this logic makes sense.
   select(-metric) %>%
-  # within a plot, across cluster IDs, get the closest
+  # within a plot, across seed source cluster IDs, get the closest cluster
   group_by(plot_id) %>%
   summarize(across(-cluster_id, ~ min(.x,na.rm=TRUE)))
 
-# make composite-species columns
+# TODO for more detailed analysis: compute some metric of seed source density & distance that composites both, using all clusters of trees seen. Currenly only using the closest cluster.
+
+# Make composite-species columns (same as for seedlings). Still this is only recording the minimum distance to any trees in the species group. TODO for more detailed analysis: use a metric of seed source density & distance.
 dist_grn = dist_grn %>%
   mutate(ALL = pmin(any,pipj,pila,psme,abco,cade,`abco/abma`, na.rm=TRUE),
          YLWPINES = pipj,
          PINES = pmin(pipj,pila, na.rm=TRUE),
          FIRS = pmin(psme,abco,`abco/abma`,na.rm=TRUE),
          ABIES = pmin(abco,`abco/abma`, na.rm=TRUE)) %>%
-  select(-`abco/abma`, -any) ###!!! NOTE: dropping trees that were abco/abma ambiguous They are already incorporated into FIRS and ABIES. For analysis, need to keep in mind that can't use these plots for species-specific ABCO analysis. Or just do all analysis for ABIES.
-
+  select(-`abco/abma`, -any) |> ###!!! NOTE for 2021 analysis: we are dropping seed trees that were abco/abma ambiguous They are already incorporated into FIRS and ABIES. For analysis, need to keep in mind that can't use these plots for species-specific ABCO analysis. Or just do all analysis for ABIES. Potentially make a new column that flags whether the trees were ABCO/ABMA ambiguous if it would be useful to optionally exclude those plots. But might not be if always lumping to ABIES.
+  # Inf can mean there were no trees observed for that species group (as the`summarize` step in the previous pipeline can return Inf if there were no trees in that species category at all), so set to NA
+  mutate(across(c(-plot_id,-year), ~ifelse(. == Inf, NA, .)))
+  
 names(dist_grn) = toupper(names(dist_grn))  
 names(dist_grn)[names(dist_grn) == "PLOT_ID"] = "plot_id"
+names(dist_grn)[names(dist_grn) == "YEAR"] = "year"
 
 #prepend "dist_grn_" to the seed dist cols
-names(dist_grn)[names(dist_grn) != "plot_id"] = paste0("dist_grn_",names(dist_grn)[names(dist_grn) != "plot_id"])
+names(dist_grn)[!(names(dist_grn) %in% c("plot_id", "year"))] = paste0("dist_grn_",names(dist_grn)[!(names(dist_grn) %in% c("plot_id", "year"))])
 
 
 
@@ -423,29 +478,23 @@ matched = (seedl_wide$plot_id) %in% plots_seedl$plot_id
 not_matched = seedl_wide[!matched,"plot_id"]
 
 
-plots_complete = left_join(plots_seedl,dist_grn)
+plots_complete = left_join(plots_seedl,dist_grn |> select(-year))
 # lots of rows with NA for dist_grn that simply didn't have any grn recorded (bc not visible)
 
-# were there any dist_grn records that didn't match plots?
+# Were there any dist_grn records that didn't match plots?
 matched = (dist_grn$plot_id) %in% plots_seedl$plot_id
 not_matched = dist_grn[!matched,"plot_id"]
 
-## make sure no plots are duplicated
+## Make sure no plots are duplicated
 any(duplicated(plots_complete$plot_id))
 
-## Combine seedwall_dist with the green seed sources (all)? Actually don't need to since we'll be anlyzing seedwall plots separately.
 
-
-
-## for seedl_dens, and cone_dens (but not seedwall_cone_dens), set to 0 if NA
-plots_complete = plots_complete %>%
-  mutate(across(starts_with("cone_dens_"), ~ifelse(is.na(.x),0,.x)  )) %>%
-  mutate(across(starts_with("seedl_dens_"), ~ifelse(is.na(.x),0,.x)  ))
+## NOTE: Not combining seedwall_dist with green seed source distances, since thus far we're anlyzing seedwall plots separately. For future analyses consider if this may be necessary.
 
 
 
 #### Compute 
-# 50 m cover : % green, % scorched
+# 50 m cover : prop green, prop scorched
 plots_complete = plots_complete %>%
   mutate(#untorched_cover_50m = cov_untorched_50m / 100,    #removed this because it turns it out was collected inconsistently in 2021 vs 2022 and therefore it was discontinued partway through 2022
          vol_brn_prop_50m = vol_brn_50m / 100,
@@ -463,16 +512,39 @@ sp_comp = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.xlsx"), s
                           "S37B" = "S73B",
                           "T0007" = "T007",
                           "S035-551" = "C035-551"
-  ))
-  # remove a double-entered plot
-  
+  )) |>
+  mutate(pimo = ifelse(pimo == TRUE, 2, pimo)) # TODO for 2021: when this xls gets imported, weirdly it calls all cells with a value TRUE, but the only values (for 2022) are 2 so we can hack this back to what it should be, but for 2021 we will need to check. Probably fine since I don't think there were any PIMO in 2021.
 
-# for green, get percent of the green by species (using green vol comp)
-# for brown, multiply brown cover by pre-drop species comp (using pre-drop cover)
+
+## Filter to 2022 and Caldor and Dixie only
+sp_comp = sp_comp |>
+  filter(year == 2022) |>
+  left_join(plotid_fire) |>
+  filter(fire %in% c("Caldor", "Dixie")) |>
+  select(-fire)
+
+## Check if any plots are double-entered
+inspect = sp_comp |>
+  filter(metric == "green_vol")
+any(duplicated(inspect$plot_id))
+
+
+## Check that the comp data matched the plot IDs of the main plot data
+plot_ids = unique(plots$plot_id)
+comp_plot_ids = unique(sp_comp$plot_id)
+
+plot_no_comp = setdiff(plot_ids, comp_plot_ids)
+comp_no_plot = setdiff(comp_plot_ids, plot_ids)
+
+## TODO for 2021: there may be some duplicates in the 2021 data
+
+
+# For green, get percent of the green by species (using green vol comp)
+# For brown, multiply brown cover by pre-drop species comp (using pre-drop cover)
 # also use overall pre-drop species comp by volume
 # so we need to get pre-drop vol and green vol by species and species group
 
-# make composite-species columns
+# make composite-species (species group) columns by summing the cover/volume across member species.
 sp_comp = sp_comp %>%
   filter(metric %in% c("untorched_vol", "untorched_cov", "green_vol")) %>%
   mutate(across(pipj:`abco/psme`, ~as.numeric(as.character(.x)))) %>%
@@ -484,66 +556,78 @@ sp_comp = sp_comp %>%
          ABIES = sum(abco,`abco/abma`, na.rm=TRUE)) %>%
   select(-`abco/abma`, -`abco/psme`, -`(add cols for other spp)`) %>% ###!!! NOTE: dropping trees that were abco/abma ambiguous They are already incorporated into FIRS and ABIES. For analysis, need to keep in mind that can't use these plots for species-specific ABCO analysis. Or just do all analysis for ABIES.
   rename_with(~toupper(.), pipj:pimo) %>%
-  unique() %>% # remove a row that was double-entered
-  pivot_wider(names_from=metric, values_from = c("PIPJ","PILA","PSME","ABCO","CADE","PICO", "PIMO","ALL","YLWPINES","PINES","FIRS","ABIES"), values_fn = max) %>%
-  # if it's NA then assume it's 0
+  #TODO for 2021: Make sure there are no duplicate entries. There would be for revisited plots unless those plot IDs are changed to something like "year_plotid"
+  pivot_wider(names_from=metric, values_from = c("PIPJ","PILA","PSME","ABCO","CADE","PICO", "PIMO","ALL","YLWPINES","PINES","FIRS","ABIES")) %>% # if there are any warnings here about list columns, or ambiguous/multiple values per row, it probably means there were duplicated rows, so need to address that before this stip.
+  # if it's NA then it's 0
   mutate(across(-plot_id,~ifelse(is.na(.x),0,.x)))
-#TODO: without "values_fun" above, list cols are being generated. They are from revisited plots that are listed twice. need to deal with that if want to analyze revisits
 
 # pull comp into plot data
-plots_w_comp = left_join(plots_complete,sp_comp)
+plots_w_comp = left_join(plots_complete,sp_comp) # TODO for 2021: make sure it only joins by plot_id (or year_plotid if you switch to that nomenclature, or possibly plot_id and year together)
 
-#check that the comp data matched the plot IDs of the main plot data
-check = plots_w_comp %>%
-  select(plot_id, ALL_untorched_vol, ALL_green_vol)
 
-# which comp data didn't match with a main plot?
-check2 = left_join(sp_comp,plots_complete) %>%
-  select(plot_id, date)
-
-# entries for comp without plot data:
+### TODO for 2021: Note from previous processing of 2021 data: 
+# Entries for comp without plot data:
 # S100-2 (was double-entered under a different ID with no dashes)
 # S100-1 (was double-entered under a different ID with no dashes)
 
 
 
-
-####!! if the plot is a core plot and had some vol brown overall (vol_brn_50m), but ALL_untorched_cov is 0 and it's not a seedwall plot, set all the untorched covers to -5 because it means it was not entered properly
+#### If the plot is a core plot and had some vol brown overall (vol_brn_50m), but ALL_untorched_cov is 0 (meaning the species breakdown of the cover was not recorded) and it's not a seedwall plot, set all the untorched covers to -5 because it means it was not entered properly
 ## same for green ^
-####!!NOTE TODO need to re-enter these from the paper datasheets
+#### TODO for 2021: See if there are any plots that are found by the lines below that have any meaningful discrepancies like this and see if they can be fixed by returning to the paper dataseheets.
 
-which_incomplete_predrop = (plots_w_comp$vol_brn_50m > 1) & (plots_w_comp$ALL_untorched_cov == 0) & (toupper(plots_w_comp$plot_type) == "CORE")
-which_incomplete_green = (plots_w_comp$vol_grn_50m > 1) & (plots_w_comp$ALL_green_vol == 0) & (toupper(plots_w_comp$plot_type) == "CORE")
+which_incomplete_predrop = (plots_w_comp$vol_brn_50m > 2) & (plots_w_comp$ALL_untorched_cov == 0) & (toupper(plots_w_comp$plot_type) == "CORE")
+which_incomplete_green = (plots_w_comp$vol_grn_50m > 2) & (plots_w_comp$ALL_green_vol == 0) & (toupper(plots_w_comp$plot_type) == "CORE")
 
-plots_w_comp[which_incomplete_predrop | which_incomplete_green,] %<>%
-  mutate(across(ends_with(c("_cov","_vol")),~-5))
+plotids_incomplete_predrop = plots_w_comp$plot_id[which_incomplete_predrop]
+plotids_incomplete_green = plots_w_comp$plot_id[which_incomplete_green]
+
+## TODO: Find plots where the covers did not sum to 100 (or 0) and rescale all the values so they sum to 100. Make sure there was not a huge discrepancy like they only summed to 70.
 
 
-## To get species-specific green, multiply *_green_vol by green_vol_prop_50m: this is "proportion of the prefire canopy that is green for species" and "proprotion of the pre
-## To get species-specific scorched, multiply *_predrop_cov by scorched_cover_50m: this is "proportion of the scorched canopy cover that is composed of species X"
-
+## To get species-specific green, multiply *_green_vol by green_vol_prop_50m: this is "proportion of the prefire canopy volume that is green for species" and "proprotion of the prefire canopy volume that is brown for species"
 plots_w_comp = plots_w_comp %>%
   mutate(across(ends_with("_green_vol"), ~.x*vol_grn_prop_50m/100, .names = "{.col}_abs")) %>%
-  #mutate(across(ends_with("_untorched_cov"), ~.x*untorched_cover_50m/100, .names = "{.col}_abs")) %>% # removed this because scorched_cover was being collected incorrectly
+  # Removed untorched_cov because the crew was collecting it wrong: mutate(across(ends_with("_untorched_cov"), ~.x*untorched_cover_50m/100, .names = "{.col}_abs")) %>% # removed this because scorched_cover was being collected incorrectly
   mutate(across(ends_with("_untorched_vol"), ~.x*vol_brn_prop_50m/100, .names = "{.col}_abs"))
 
 
-
-
-### Pull in date of burning
-
-dob = vrt(list.files(datadir("day-of-burning-rasters/"), pattern="tif$", full.names=TRUE))
+##### Pull in predictor data from rasters ####
 
 plots_sp = st_as_sf(plots_w_comp, coords=c("lon","lat"), crs="EPSG:4326")
 
+### Pull in date of burning
+dob = vrt(list.files(datadir("day-of-burning-rasters/"), pattern="tif$", full.names=TRUE))
 dob_extract = extract(dob, plots_sp |> st_transform(st_crs(dob)))[,2]
 plots_w_comp$day_of_burning = dob_extract
 plots_sp$day_of_burning = dob_extract
 
-write_csv(plots_w_comp, datadir("field-data/processed/plot_seedl_cone_grnseedsource_comp.csv"))
+
+### Pull in SRI
+sri = vrt(list.files(datadir("sri/"), pattern="tif$", full.names=TRUE))
+sri_extract = extract(sri, plots_sp |> st_transform(st_crs(sri)), method = "bilinear")[,2]
+plots_w_comp$sri = sri_extract
+plots_sp$sri = sri_extract
+
+
+
+#### Pull in temp and precip
+ppt = vrt(list.files(datadir("prism/ppt-normal/"), pattern="bil$", full.names=TRUE))
+tmean = vrt(list.files(datadir("prism/tmean-normal//"), pattern="bil$", full.names=TRUE))
+ppt_extract = extract(ppt, plots_sp |> st_transform(st_crs(ppt)), method = "bilinear")[,2]
+tmean_extract = extract(tmean, plots_sp |> st_transform(st_crs(tmean)), method = "bilinear")[,2]
+plots_w_comp$ppt = ppt_extract
+plots_w_comp$tmean = tmean_extract
+plots_sp$ppt = ppt_extract
+plots_sp$tmean = tmean_extract
+
+
+
+write_csv(plots_w_comp, datadir("field-data/processed/plot-data-prepped.csv"))
 st_write(plots_sp, datadir("field-data/processed/early-regen-2022.gpkg"), delete_dsn = TRUE)
 
-## Save a version with plot_id only
+
+## Save a version with plot_id only, for e.g. sending to managers
 d_save = plots_sp |>
   filter(fire == "Caldor") |>
   select(plot_id)
