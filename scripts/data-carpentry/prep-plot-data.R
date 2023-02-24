@@ -410,6 +410,7 @@ green_seedsource = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.
 
 ## NOTE: In the data entry sheet for this table, DY manually removed a second identical instance of entered data for C038-229. It came right after the entry for C038-226.
 
+
 ## TEMPORARILY filter to 2022 data only, exclude Creek
 green_seedsource = green_seedsource |>
   filter(year == 2022)
@@ -513,7 +514,32 @@ sp_comp = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.xlsx"), s
                           "T0007" = "T007",
                           "S035-551" = "C035-551"
   )) |>
-  mutate(pimo = ifelse(pimo == TRUE, 2, pimo)) # TODO for 2021: when this xls gets imported, weirdly it calls all cells with a value TRUE, but the only values (for 2022) are 2 so we can hack this back to what it should be, but for 2021 we will need to check. Probably fine since I don't think there were any PIMO in 2021.
+  filter(!is.na(plot_id)) |>
+  mutate(pimo = ifelse(pimo == TRUE, 2, pimo)) |> # TODO for 2021: when this xls gets imported, weirdly it calls all cells with a value TRUE, but the only values (for 2022) are 2 so we can hack this back to what it should be, but for 2021 we will need to check. Probably fine since I don't think there were any PIMO in 2021.
+  mutate(across(pipj:pico, as.character))
+
+
+## One seed wall plot did not have green species comp recorded (must have forgotten in field). Assume it was the average of the other plots in this seed wall
+plots_foc = sp_comp |>
+  filter(year == 2022,
+         str_starts(plot_id, fixed("S005")),
+         metric == "green_vol") |>
+  mutate(across(pipj:pico, as.numeric)) |>
+  mutate(across(pipj:pico, ~ifelse(is.na(.), 0, .))) |>
+  summarize(across(pipj:pico, mean))
+
+new_row = data.frame(year = 2022,
+                     plot_id = "S005-029",
+                     metric = "green_vol",
+                     pipj = plots_foc$pipj,
+                     pila = plots_foc$pila,
+                     psme = plots_foc$psme,
+                     abco = plots_foc$abco,
+                     cade = plots_foc$cade,
+                     pico = plots_foc$pico) |>
+  mutate(across(pipj:pico, as.character))
+
+sp_comp = bind_rows(sp_comp, new_row)
 
 
 ## Filter to 2022 and Caldor and Dixie only
