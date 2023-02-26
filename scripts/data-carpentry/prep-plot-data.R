@@ -175,6 +175,18 @@ plots = plots |>
 inspect = plots |>
   select(plot_id, starts_with("prefire_prop_"))
 
+# Compute prefire_prop by species groups
+plots = plots |>
+  mutate(prefire_prop_PINES = prefire_prop_pipj + prefire_prop_pila + prefire_prop_pico + prefire_prop_pimo,
+         prefire_prop_ABIES = prefire_prop_abco + prefire_prop_abma,
+         prefire_prop_YLWPINES = prefire_prop_pipj,
+         prefire_prop_ABCO = prefire_prop_abco,
+         prefire_prop_PSME = prefire_prop_psme,
+         prefire_prop_ALL = 100)
+
+
+
+
 
 #### Summarize data in ways useful for research questions ####
 
@@ -650,7 +662,7 @@ plots_sp$tmean = tmean_extract
 
 
 write_csv(plots_w_comp, datadir("field-data/processed/plot-data-prepped.csv"))
-st_write(plots_sp, datadir("field-data/processed/early-regen-2022.gpkg"), delete_dsn = TRUE)
+st_write(plots_sp |> select(1:3,27:37, starts_with("seedl_dens"), contains("untorched_vol_abs")), datadir("field-data/processed/early-regen-2022_tst.gpkg"), delete_dsn = TRUE)
 
 
 ## Save a version with plot_id only, for e.g. sending to managers
