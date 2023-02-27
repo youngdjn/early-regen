@@ -1,6 +1,9 @@
 library(tidyverse)
 library(mgcv)
 library(here)
+library(scales)
+
+source("scripts/analysis/year1-dixie-caldor_functions.R")
 
 # The root of the data directory
 datadir = readLines(here("data_dir.txt"), n=1)
@@ -19,7 +22,10 @@ hist(d$seedl_dens_ALL, breaks=200)
 # Calc fire intensity (scorch vs torch) indices
 d = d |>
   mutate(fire_intens =  100 - pmax(litter_cover,vol_brn_50m),
-         fire_intens2 = 200 - (litter_cover + vol_brn_50m))
+         fire_intens2 = 200 - (litter_cover + vol_brn_50m)) |>
+  # these should go into data prep script:
+  mutate(ba = ba_factor * ba_tally) |>
+  mutate(capable_growing_area = 100 - nongrowing_cover)
 
 
 ### Environmental context across all plots
@@ -39,115 +45,131 @@ windows = data.frame(fire = c("Caldor","Caldor", "Dixie", "Dixie", "Dixie"),
 
 #### Analysis
 
-### Prep data frame for a species
-
-prep_d_sp = function(sp) {
-
-  dist_grn_var = paste0("dist_grn_", sp)
-  seedl_dens_var = paste0("seedl_dens_",sp)
-  untorched_vol_abs_var = paste0(sp, "_untorched_vol_abs")
-  grn_vol_abs_var = paste0(sp, "_green_vol_abs")
-  under_cones_new_var = paste0("under_cones_new_", sp)
-  cone_dens_var = paste0("cone_dens_", sp)
-  prefire_prop_var = paste0("prefire_prop_", sp)
-  
-  d_sp = d |>
-    select(fire, plot_id, date, shrub_cover, shrub_ht, nongrowing_cover, litter_cover,
-           litter_depth, moss_cover, branches_cover, trample, plot_type, ba_factor, ba_tally,
-           vol_grn_50m, vol_brn_50m, vol_blk_50m, sight_line, mean_tree_dbh,
-           mean_seedwall_height, day_of_burning, sri, ppt, tmean, fire_intens, fire_intens2,
-           dist_grn_sp = starts_with(dist_grn_var),
-           seedl_dens_sp = starts_with(seedl_dens_var),
-           untorched_vol_abs_sp = starts_with(untorched_vol_abs_var),
-           grn_vol_abs_sp = starts_with(grn_vol_abs_var),
-           under_cones_new_sp = starts_with(under_cones_new_var),
-           cone_dens_sp = starts_with(cone_dens_var),
-           prefire_prop_sp = starts_with(prefire_prop_var)) |>
-    filter(prefire_prop_var > 20)
-  
-  return(d_sp)
-}
-
-
-#### Plot raw seedling density data vs day of burning
-
-plot_raw_data = function(d_sp) {
-  
-  # make zeros nonzero
-  d_sp = d_sp |>
-    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.001592357, 0.001592357, seedl_dens_sp))
-  
-  # core area plots, far from any green of the focal speices
-  d_sp_nogrn = d_sp |>
-    filter(grn_vol_abs_sp == 0,
-      ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-      plot_type %in% c("core", "delayed"))
-  
-  # seed wall plots
-  d_sp_sw = d_sp |>
-    filter(plot_type == "seedwall")
-  
-  # prep for figure: classify fire intens
-  d_sp_nogrn_fig = d_sp_nogrn |>
-    mutate(fire_intens2_cat = ifelse(fire_intens2 < median(fire_intens2), "scorched", "torched"),
-           fire_intens_cat = ifelse(fire_intens < median(fire_intens), "scorched", "torched"),
-           vol_brn_50m_cat = ifelse(vol_brn_50m > median(vol_brn_50m), "scorched", "torched") ) |>
-    mutate(fire_intens_cat_foc = fire_intens2_cat)
-  
-  
-  
-  # make a copy of the constant df in order to store the median vals for this species
-  windows_foc = windows
-  
-  # compute median seel density by seedwall, scorch, torch within each predefined date window
-  for(i in 1:nrow(windows_foc)) {
-    
-    window = windows_foc[i,]
-    
-    core_blk_foc = d_sp_nogrn_fig |>
-      filter(fire == window$fire) |>
-      filter(between(day_of_burning, window$start, window$end)) |>
-      filter(fire_intens_cat_foc == "torched",)
-    core_blk_median = median(core_blk_foc$seedl_dens_sp)
-    
-    core_brn_foc = d_sp_nogrn_fig |>
-      filter(fire == window$fire) |>
-      filter(between(day_of_burning, window$start, window$end)) |>
-      filter(fire_intens_cat_foc == "scorched")
-    core_brn_median = median(core_brn_foc$seedl_dens_sp)
-    
-    sw_foc = d_sp_sw |>
-      filter(between(day_of_burning, window$start, window$end))
-    sw_median = median(sw_foc$seedl_dens_sp)
-    
-    windows_foc[i,"seedwall_median"] = sw_median
-    windows_foc[i,"core_blk_median"] = core_blk_median
-    windows_foc[i,"core_brn_median"] = core_brn_median
-    
-  }
-  
-  
-  ggplot(d_sp_nogrn_fig, aes(x = day_of_burning, y = seedl_dens_sp)) +
-    geom_hline(yintercept = 0.0173, linetype = "dashed", color="gray70") +
-    geom_jitter(data = d_sp_sw, color="#A2D435", size=3, height=0, width=2, aes(shape="")) +
-    geom_jitter(size=3, height = 0, width=2, aes(color = fire_intens_cat_foc)) +
-    labs(shape = "Seed wall") +
-    scale_color_manual(values = c(torched = "black", scorched = "#9D5B0B"), name = "Core area") +
-    facet_grid(~fire) +
-    theme_bw(15) +
-    labs(x = "Day of Burning", y = "Seedlings / sq m") +
-    scale_y_continuous(breaks = c(.01,.1,1,10,100), minor_breaks = c(0.005, 0.05, 0.5, 5.0, 50)) +
-    coord_trans(y = "log") +
-    geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = seedwall_median, yend = seedwall_median), linewidth = 1.5, color = "white") +
-    geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_blk_median, yend = core_blk_median), linewidth = 1.5, color = "white") +
-    geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_brn_median, yend = core_brn_median), linewidth = 1.5, color = "white") +
-    geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = seedwall_median, yend = seedwall_median), linewidth = 1, color = "#A2D435") +
-    geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_blk_median, yend = core_blk_median), linewidth = 1, color = "black") +
-    geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_brn_median, yend = core_brn_median), linewidth = 1, color = "#9D5B0B")
-
-}
-
-
-d_sp = prep_d_sp("YLWPINES")
+## Prep for ALL SPECIES
+# Prep data
+d_sp = prep_d_sp("ALL")
+d_mod = prep_d_core_mod(d_sp) |>
+  mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
+         cone_dens_sp = cone_dens_sp * 314)
+# Plot raw data
 plot_raw_data(d_sp)
+# Fit GAM
+m = gam(seedl_dens_sp ~ s(fire_intens2, k = 3) + s(ppt, k = 3) + s(capable_growing_area, k = 3), data = d_mod, family = poisson, method = "REML")
+all_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
+m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(capable_growing_area, k = 3), data = d_mod, family = poisson, method = "REML")
+all_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$deviance) / m_nointens$null.deviance) |> round(1)
+summary(m)
+sum(influence(m))
+#plot(m)
+# Prep scenario plotting data
+predictors = c("fire_intens2", "ppt", "capable_growing_area")
+scenario_preds_all = get_scenario_preds(m, d_mod, predictors, sp = "All conifers")
 
+## Prep for PINES
+# Prep data
+d_sp = prep_d_sp("PINES")
+d_mod = prep_d_core_mod(d_sp) |>
+  mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
+         cone_dens_sp = cone_dens_sp * 314)
+# Plot raw data
+plot_raw_data(d_sp)
+# Fit GAM
+m = gam(seedl_dens_sp ~ s(fire_intens2, k = 3) + s(ppt, k = 3) + s(capable_growing_area, k = 3) + s(cone_dens_sp, k = 3), data = d_mod, family = poisson, method = "REML")
+pines_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
+m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(capable_growing_area, k = 3) + s(cone_dens_sp, k = 3), data = d_mod, family = poisson, method = "REML")
+pines_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$deviance) / m_nointens$null.deviance) |> round(1)
+summary(m)
+sum(influence(m))
+#plot(m)
+# Prep scenario plotting data
+predictors = c("fire_intens2", "ppt", "capable_growing_area", "cone_dens_sp")
+scenario_preds_pines = get_scenario_preds(m, d_mod, predictors, sp = "Pines")
+
+## Prep for ABIES
+# Prep data
+d_sp = prep_d_sp("ABIES")
+d_mod = prep_d_core_mod(d_sp) |>
+  mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
+         cone_dens_sp = cone_dens_sp * 314)
+# Plot raw data
+plot_raw_data(d_sp)
+# Fit GAM
+m = gam(seedl_dens_sp ~ s(fire_intens2, k = 3) + s(ppt, k = 3) + s(capable_growing_area, k = 3), data = d_mod, family = poisson, method = "REML")
+firs_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
+m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(capable_growing_area, k = 3), data = d_mod, family = poisson, method = "REML")
+firs_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$deviance) / m_nointens$null.deviance) |> round(1)
+summary(m)
+sum(influence(m))
+#plot(m)
+# Prep scenario plotting data
+predictors = c("fire_intens2", "ppt", "capable_growing_area")
+scenario_preds_firs = get_scenario_preds(m, d_mod, predictors, sp = "Firs")
+
+
+
+# Combine the scenario plots for each species group together so we can plot the fits of multiple species in one panel
+scenario_preds = bind_rows(scenario_preds_all, scenario_preds_pines, scenario_preds_firs)
+
+
+
+
+# Make scenario plots
+p1 = make_scenario_ggplot(scenario_preds, "fire_intens2", ymin = 0.04, ymax = 8)
+p2 = make_scenario_ggplot(scenario_preds, "ppt", ymin = 0.04, ymax = 8)
+p3 = make_scenario_ggplot(scenario_preds, "capable_growing_area", ymin = 0.04, ymax = 8)
+p4 = make_scenario_ggplot(scenario_preds, "cone_dens_sp", ymin = 0.04, ymax = 8)
+
+library(ggpubr)
+
+ggarrange(p1, 
+          ggarrange(p2, p3 + rremove("ylab") + rremove("y.text"), p4 + rremove("ylab") + rremove("y.text"), nrow=1, ncol = 3, legend = "none", widths = c(1.2,1,1)),
+          nrow = 2, ncol = 1, heights = c(3,1),
+          common.legend = TRUE)
+
+
+ggarrange(p1,p2,p3,p4, common.legend = TRUE)
+
+## TODO: truncate lines to range of data
+
+
+
+#### Make a table of deviance explained 
+
+dev = data.frame(species = c("All conifers", "Pines", "Firs"),
+                 dev_expl_intens = c(all_intens_dev_exp, pines_intens_dev_exp, firs_intens_dev_exp),
+                 dev_expl_nointens = c(all_nointens_dev_exp, pines_nointens_dev_exp, firs_nointens_dev_exp)) |>
+  mutate(difference = dev_expl_intens - dev_expl_nointens)
+
+
+# All conifers with intensity and without, same for other sp
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### Does litter affect seedling dens in seed wall plots?
+d_sp = prep_d_sp("ALL")
+d_mod = prep_d_sw_mod(d_sp, max_sw_dist = 30)
+hist(d_mod$seedl_dens_sp, breaks = 200)
+m = gam(round(seedl_dens_sp*314) ~ + s(ppt, k = 3) + s(dist_grn_sp, k = 3) , data = d_mod, family = poisson)
+summary(m)
+plot(m)
+
+library(mgcViz)
+m = getViz(m)
+print(plot(m, allTerms = TRUE), pages = 1)
+
+
+hist(d_mod$dist_grn_sp)
+
+##### MAKE SURE SEED WALL PLOTS ARE CLOSE TO GREEN. RECALL WHICH DATA FIELD THAT WOULD BE FROM THE DATASHEET AND DF
