@@ -662,7 +662,7 @@ plots_sp$tmean = tmean_extract
 
 
 write_csv(plots_w_comp, datadir("field-data/processed/plot-data-prepped.csv"))
-st_write(plots_sp |> select(1:3,27:37, starts_with("seedl_dens"), contains("untorched_vol_abs")), datadir("field-data/processed/early-regen-2022_tst.gpkg"), delete_dsn = TRUE)
+st_write(plots_sp |> select(1:3, 24, 27:37, starts_with("seedl_dens"), contains("untorched_vol_abs"), "ppt", "day_of_burning", "dist_grn_ALL"), datadir("field-data/processed/early-regen-2022.gpkg"), delete_dsn = TRUE)
 
 
 ## Save a version with plot_id only, for e.g. sending to managers

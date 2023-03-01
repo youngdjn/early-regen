@@ -57,7 +57,18 @@ plot_raw_data = function(d_sp) {
   
   
   
-  # make a copy of the constant df in order to store the median vals for this species
+  ### Context figure: plot day of burning, precip, and plot type
+  allplots = bind_rows(d_sp_nogrn_fig, d_sp_sw) |>
+    mutate(plot_type = recode(plot_type, "delayed" = "core")) # this may select some delayed mortality plots that behave as core plots because they're > 100 m from green.
+  
+  p = ggplot(allplots, aes(x = day_of_burning, y = ppt, color = fire, shape = plot_type)) +
+    geom_jitter(width = 2)
+  
+  print(p)
+  
+  
+  
+  # make a copy of the constant df defining the windows in order to store the median vals for this species
   windows_foc = windows
   
   # compute median seel density by seedwall, scorch, torch within each predefined date window
@@ -87,7 +98,7 @@ plot_raw_data = function(d_sp) {
     
   }
   
-  ggplot(d_sp_nogrn_fig, aes(x = day_of_burning, y = seedl_dens_sp)) +
+  p = ggplot(d_sp_nogrn_fig, aes(x = day_of_burning, y = seedl_dens_sp)) +
     geom_hline(yintercept = 0.0173, linetype = "dashed", color="gray70") +
     geom_jitter(data = d_sp_sw, color="#A2D435", size=3, height=0, width=2, aes(shape="")) +
     geom_jitter(size=3, height = 0, width=2, aes(color = fire_intens_cat_foc)) +
@@ -96,7 +107,7 @@ plot_raw_data = function(d_sp) {
     facet_grid(~fire) +
     theme_bw(15) +
     labs(x = "Day of Burning", y = "Seedlings / sq m") +
-    scale_y_continuous(breaks = c(.001,.01,.1,1,10,100), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50), labels = label_comma()) +
+    scale_y_continuous(breaks = c(.001,.01,.1,1,10,100), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50), labels = label_comma(big.mark=",")) +
     coord_trans(y = "log") +
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = seedwall_median, yend = seedwall_median), linewidth = 1.5, color = "white") +
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_blk_median, yend = core_blk_median), linewidth = 1.5, color = "white") +
@@ -104,6 +115,8 @@ plot_raw_data = function(d_sp) {
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = seedwall_median, yend = seedwall_median), linewidth = 1, color = "#A2D435") +
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_blk_median, yend = core_blk_median), linewidth = 1, color = "black") +
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_brn_median, yend = core_brn_median), linewidth = 1, color = "#9D5B0B")
+  
+  print(p)
   
 }
 
@@ -120,20 +133,25 @@ prep_d_core_mod = function(d_sp) {
   return(d_mod)
 }
 
-get_scenario_preds = function(m, d_mod, predictors, sp) {
+get_scenario_preds = function(m, d_mod, predictors, sp, percentile_exclude) {
   
   predictor_foc_preds = data.frame()
   for(predictor_foc in predictors) {
     
+    ## truncate each prediction range to exclude the upper and lower x percentile extremes of observed data for each species
+    range = d_mod |>
+      summarize(lwr = quantile(!!ensym(predictor_foc),percentile_exclude),
+                upr = quantile(!!ensym(predictor_foc), 1-percentile_exclude))
+    
     # get fitted line for hypothetical variation along focal var (all else set to mean)
     # start with a data frame of all predictors set at their means
     newdat_predictor_foc = d_mod |>
-      select(fire_intens2, ppt, capable_growing_area, prefire_prop_sp, vol_brn_50m, cone_dens_sp) |>
+      select(fire_intens2, ppt, capable_growing_area, prefire_prop_sp, vol_brn_50m, cone_dens_sp, dist_grn_sp) |>
       summarize_all(mean) |>
       slice(rep(row_number(), 100)) # get 100 identical (repeated) rows
     
     # now make the focal col a seq from the min obs to max obs
-    newdat_predictor_foc[,predictor_foc] =  seq(min(d_mod[,predictor_foc]), max(d_mod[,predictor_foc]), length.out = 100)
+    newdat_predictor_foc[,predictor_foc] =  seq(range$lwr, range$upr, length.out = 100)
     
     pred = predict(m, newdat_predictor_foc, type = "link", se.fit=TRUE, unconditional = TRUE)
     newdat_predictor_foc$preds = pred$fit
@@ -159,7 +177,6 @@ get_scenario_preds = function(m, d_mod, predictors, sp) {
 # Prep seedwall data for modeling
 prep_d_sw_mod = function(d_sp, max_sw_dist) {
   d_mod = d_sp |>
-    filter(day_of_burning > 220) |>
     filter(plot_type == "seedwall") |>
     filter(dist_grn_sp < max_sw_dist)
   
@@ -169,7 +186,7 @@ prep_d_sw_mod = function(d_sp, max_sw_dist) {
 make_scenario_ggplot = function(scenario_preds, focal_predictor, ymin, ymax) {
   
   d_fig = scenario_preds |> filter(predictor_foc == focal_predictor)
-  # plot the fit with the raw data
+  
   ggplot(data = d_fig, mapping = aes(x = !!ensym(focal_predictor), y = preds, color = species, fill = species)) +
     # optional to display data:
     #geom_point(data = d_mod, mapping = aes(y = ifelse(seedl_dens_sp < .5, .5, seedl_dens_sp), color = ppt > 1200)) +
