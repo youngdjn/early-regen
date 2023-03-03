@@ -23,10 +23,14 @@ hist(d$seedl_dens_ALL, breaks=200)
 # Calc fire intensity (scorch vs torch) indices
 d = d |>
   mutate(fire_intens =  100 - pmax(litter_cover,vol_brn_50m),
-         fire_intens2 = 100 - ((litter_cover+vol_brn_50m)/2)) |>
+         fire_intens2 = 100 - ((litter_cover+vol_brn_50m)/2),
+         fire_intens10 = 100 - (litter_cover + vol_brn_10m)/2) |>
   # these should go into data prep script:
   mutate(ba = ba_factor * ba_tally) |>
-  mutate(capable_growing_area = 100 - nongrowing_cover)
+  mutate(capable_growing_area = 1 - nongrowing_cover/100) |>
+  mutate(across(starts_with("seedl_dens_"), ~./capable_growing_area)) # seedling density within the cabaple growing area
+
+  
 
 
 ### Environmental context across all plots
@@ -42,7 +46,7 @@ windows = data.frame(fire = c("Caldor","Caldor", "Dixie", "Dixie", "Dixie"),
 
 #### Analysis
 
-percentile_exclude = 0.0
+percentile_exclude = 0.025
 
 ## For ALL SPECIES
 # Prep data
@@ -70,123 +74,125 @@ ggplot(d_sw, aes(x = day_of_burning, y = dist_grn_sp, color = fire)) +
 # Plot raw data
 plot_raw_data(d_sp)
 
-# Fit GAM
 
-d_mod = prep_d_core_mod(d_sp) |>
+
+# Fit GAMs
+d_sp = prep_d_sp("ALL")
+d_mod_all_core = prep_d_core_mod(d_sp) |>
   mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
-         cone_dens_sp = cone_dens_sp * 314)
+         cone_dens_sp = cone_dens_sp * 314) |>
+  mutate(species = "All conifers", type = "Core")
 
-m = gam(seedl_dens_sp ~ s(fire_intens2, k = 3) + s(ppt, k = 3) + s(capable_growing_area, k = 3), data = d_mod, family = poisson, method = "REML")
-all_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
-m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(capable_growing_area, k = 3), data = d_mod, family = poisson, method = "REML")
-all_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$deviance) / m_nointens$null.deviance) |> round(1)
+m = gam(seedl_dens_sp ~ s(fire_intens2, k = 3) + s(ppt, k = 3) , data = d_mod_all_core, family = poisson, method = "REML")
+m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3), data = d_mod_all_core, family = poisson, method = "REML")
+all_core_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
+all_core_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$deviance) / m_nointens$null.deviance) |> round(1)
 summary(m)
 sum(influence(m))
 #plot(m)
 # Prep scenario plotting data
-predictors = c("fire_intens2", "ppt", "capable_growing_area")
-scenario_preds_all = get_scenario_preds(m, d_mod, predictors, sp = "All conifers", percentile_exclude = percentile_exclude)
+predictors = c("fire_intens2", "ppt")
+scenario_preds_all = get_scenario_preds(m, d_mod_all_core, predictors, sp = "All conifers", percentile_exclude = percentile_exclude) |> mutate(type = "Core")
 
 
 
 ## For PINES
 # Prep data
-d_sp = prep_d_sp("PINES")
-d_mod = prep_d_core_mod(d_sp) |>
+d_sp = prep_d_sp("YLWPINES")
+d_mod_pines_core = prep_d_core_mod(d_sp) |>
   mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
-         cone_dens_sp = cone_dens_sp * 314)
+         cone_dens_sp = cone_dens_sp * 314) |>
+  mutate(species = "Yellow pines", type = "Core")
 # Plot raw data
 plot_raw_data(d_sp)
 # Fit GAM
-m = gam(seedl_dens_sp ~ s(fire_intens2, k = 3) + s(ppt, k = 3) + s(capable_growing_area, k = 3) + s(cone_dens_sp, k = 3), data = d_mod, family = poisson, method = "REML")
-pines_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
-m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(capable_growing_area, k = 3) + s(cone_dens_sp, k = 3), data = d_mod, family = poisson, method = "REML")
-pines_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$deviance) / m_nointens$null.deviance) |> round(1)
+m = gam(seedl_dens_sp ~ s(fire_intens2, k = 3) + s(ppt, k = 3) + s(prefire_prop_sp, k = 3), data = d_mod_pines_core, family = poisson, method = "REML")
+m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(prefire_prop_sp, k = 3), data = d_mod_pines_core, family = poisson, method = "REML")
+pines_core_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
+pines_core_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$deviance) / m_nointens$null.deviance) |> round(1)
 summary(m)
 sum(influence(m))
 #plot(m)
 # Prep scenario plotting data
-predictors = c("fire_intens2", "ppt", "capable_growing_area", "cone_dens_sp")
-scenario_preds_pines = get_scenario_preds(m, d_mod, predictors, sp = "Pines", percentile_exclude = percentile_exclude)
+predictors = c("fire_intens2", "ppt", "cone_dens_sp", "prefire_prop_sp")
+scenario_preds_pines = get_scenario_preds(m, d_mod_pines_core, predictors, sp = "Yellow pines", percentile_exclude = percentile_exclude) |> mutate(type = "Core")
 
 
 
 ## For ALL SPECIES seedwall GAM fits 
 d_sp = prep_d_sp("ALL")
-d_mod = prep_d_sw_mod(d_sp, max_sw_dist = 30)
-m = gam(round(seedl_dens_sp*314) ~ + s(ppt, k = 3) + s(dist_grn_sp, k = 3) + s(fire_intens2, k = 3), data = d_mod, family = poisson)
+d_mod_all_sw = prep_d_sw_mod(d_sp, max_sw_dist = 30) |>
+  mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
+         cone_dens_sp = cone_dens_sp * 314) |>
+  mutate(species = "All conifers", type = "Seed wall")
+m = gam(seedl_dens_sp ~ + s(ppt, k = 3) + s(fire_intens2, k = 3), data = d_mod_all_sw, family = poisson)
+m_nointens = gam(seedl_dens_sp ~ + s(ppt, k = 3), data = d_mod_all_sw, family = poisson)
+all_sw_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
+all_sw_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$deviance) / m_nointens$null.deviance) |> round(1)
 summary(m)
 # Prep scenario plotting data
-predictors = c("fire_intens2", "ppt", "dist_grn_sp")
-scenario_preds_all_sw = get_scenario_preds(m, d_mod, predictors, sp = "All conifers - SW", percentile_exclude = percentile_exclude)
+predictors = c("fire_intens2", "ppt")
+scenario_preds_all_sw = get_scenario_preds(m, d_mod_all_sw, predictors, sp = "All conifers", percentile_exclude = percentile_exclude) |> mutate(type = "Seed wall")
+
+
+## For PINES seedwall GAM fits 
+d_sp = prep_d_sp("YLWPINES")
+d_mod_pines_sw = prep_d_sw_mod(d_sp, max_sw_dist = 30) |>
+  mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
+         cone_dens_sp = cone_dens_sp * 314) |>
+  mutate(species = "Yellow pines", type = "Seed wall")
+m = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(fire_intens2, k = 3), data = d_mod_pines_sw, family = poisson)
+m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3), data = d_mod_pines_sw, family = poisson)
+pines_sw_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
+pines_sw_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$deviance) / m_nointens$null.deviance) |> round(1)
+summary(m)
+# Prep scenario plotting data
+predictors = c("fire_intens2", "ppt", "cone_dens_sp", "prefire_prop_sp", "grn_vol_sp")
+scenario_preds_pines_sw = get_scenario_preds(m, d_mod_pines_sw, predictors, sp = "Yellow pines", percentile_exclude = percentile_exclude) |> mutate(type = "Seed wall")
 
 
 
 # Combine the scenario plots for each species group together so we can plot the fits of multiple species in one panel
-scenario_preds = bind_rows(scenario_preds_all, scenario_preds_pines, scenario_preds_all_sw)
-
-
+scenario_preds = bind_rows(scenario_preds_all, scenario_preds_pines, scenario_preds_all_sw, scenario_preds_pines_sw)
+d_mods = bind_rows(d_mod_all_core,
+                  d_mod_pines_core,
+                  d_mod_all_sw,
+                  d_mod_pines_sw)
 
 
 # Make scenario plots
-ymin = .05
-ymax = 20
+ymin = 0.05
+ymax = 25
 
-p1 = make_scenario_ggplot(scenario_preds, "fire_intens2", ymin = ymin, ymax = ymax)
-p2 = make_scenario_ggplot(scenario_preds, "ppt", ymin = ymin, ymax = ymax)
+p1 = make_scenario_ggplot(scenario_preds, d_mods, "fire_intens2", "Torching extent (%)", ymin = ymin, ymax = ymax)
+p2 = make_scenario_ggplot(scenario_preds, d_mods, "ppt", "Mean annual precipitation (mm)", ymin = ymin, ymax = ymax)
 
-p3 = make_scenario_ggplot(scenario_preds, "capable_growing_area", ymin = NULL, ymax = NULL)
-p4 = make_scenario_ggplot(scenario_preds, "cone_dens_sp", ymin = NULL, ymax = NULL)
-# 
-# ggarrange(p1, 
-#           ggarrange(p2, p3 + rremove("ylab") + rremove("y.text"), p4 + rremove("ylab") + rremove("y.text"), nrow=1, ncol = 3, legend = "none", widths = c(1.2,1,1)),
-#           nrow = 2, ncol = 1, heights = c(3,1),
-#           common.legend = TRUE)
+p = ggarrange(p1, p2 + rremove("ylab") + rremove("y.text"), common.legend = TRUE, widths = c(1.2,1))
 
-
-ggarrange(p1,p2,p3, p4, common.legend = TRUE)
-
-## TODO: truncate lines to range of data
-
+png(file.path(datadir, "figures/main_model_fits.png"), res = 350, width = 2000, height = 1000)
+p
+dev.off()
 
 
 #### Make a table of deviance explained 
 
-dev = data.frame(species = c("All conifers", "Pines", "Firs"),
-                 dev_expl_intens = c(all_intens_dev_exp, pines_intens_dev_exp, firs_intens_dev_exp),
-                 dev_expl_nointens = c(all_nointens_dev_exp, pines_nointens_dev_exp, firs_nointens_dev_exp)) |>
+dev = data.frame(species = c("All conifers - core", "Pines - core", "All conifers - SW", "Pines - SW"),
+                 dev_expl_intens = c(all_core_intens_dev_exp, pines_core_intens_dev_exp, all_sw_intens_dev_exp, pines_sw_intens_dev_exp),
+                 dev_expl_nointens = c(all_core_nointens_dev_exp, pines_core_nointens_dev_exp, all_sw_nointens_dev_exp, pines_sw_nointens_dev_exp)) |>
   mutate(difference = dev_expl_intens - dev_expl_nointens)
-
-
-# All conifers with intensity and without, same for other sp
-
+dev
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-#### Does litter/shading affect seedling dens in seed wall plots?
+#### Make a density~torching (color: ppt) figure with the data points, and fit lines for two ppt scenarios
 d_sp = prep_d_sp("ALL")
-d_mod = prep_d_sw_mod(d_sp, max_sw_dist = 30)
-hist(d_mod$seedl_dens_sp, breaks = 200)
-m = gam(round(seedl_dens_sp*314) ~ + s(ppt, k = 3) + s(dist_grn_sp, k = 3) + s(fire_intens2, k = 3) , data = d_mod, family = poisson)
-summary(m)
-plot(m)
+d_mod_all_core = prep_d_core_mod(d_sp) |>
+  mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
+         cone_dens_sp = cone_dens_sp * 314) |>
+  mutate(species = "All conifers", type = "Core")
 
-library(mgcViz)
-m = getViz(m)
-print(plot(m, allTerms = TRUE), pages = 1)
-
-
-hist(d_mod$dist_grn_sp)
-
-##### MAKE SURE SEED WALL PLOTS ARE CLOSE TO GREEN. RECALL WHICH DATA FIELD THAT WOULD BE FROM THE DATASHEET AND DF
+m = gam(seedl_dens_sp ~ s(fire_intens2, k = 3) + s(ppt, k = 3) , data = d_mod_all_core, family = poisson, method = "REML")
+ppt_split = 1200
+scenario_preds = get_scenario_preds(m, d_mod_all_core, "fire_intens2", sp = "All conifers", percentile_exclude = percentile_exclude, interacting_predictor = "ppt", interacting_splits = ppt_split) |> mutate(type = "Core")
+p1 = make_scenario_w_ppt_ggplot(scenario_preds, d_mod_all_core, "fire_intens2", "Torching extent (%)", ymin = NULL, ymax = NULL, interacting_splits = ppt_split, show_data = TRUE)
+p1
