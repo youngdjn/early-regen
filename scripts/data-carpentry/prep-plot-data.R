@@ -175,6 +175,15 @@ plots = plots |>
 inspect = plots |>
   select(plot_id, starts_with("prefire_prop_"))
 
+# One plot is missing prefire prop sp, so set it equal to the mean of the other plots at that seed wall
+plots_s039 = plots |>
+  filter(grepl("S039-", plot_id, fixed = TRUE)) |>
+  mutate(across(starts_with("prefire_prop_"), ~ifelse(is.na(.), mean(., na.rm=TRUE), .)))
+
+# Store those new values back in the main plots table
+plots[grepl("S039-", plots$plot_id, fixed = TRUE),] = plots_s039
+
+
 # Compute prefire_prop by species groups
 plots = plots |>
   mutate(prefire_prop_PINES = prefire_prop_pipj + prefire_prop_pila + prefire_prop_pico + prefire_prop_pimo,
