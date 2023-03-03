@@ -3,6 +3,7 @@ library(mgcv)
 library(here)
 library(scales)
 library(ggpubr)
+library(lubridate)
 
 source("scripts/analysis/year1-dixie-caldor_functions.R")
 
@@ -15,7 +16,9 @@ d = read_csv(file.path(datadir,"field-data/processed/plot-data-prepped.csv"))
 
 # Keep Caldor and Dixie 2022 only
 d = d |>
-  filter(fire %in% c("Caldor", "Dixie"))
+  filter(fire %in% c("Caldor", "Dixie")) |>
+  # remove a plot that imagery revealed to be near some marginally green trees
+  filter(!(plot_id %in% "C22-029"))
 
 # Check distrib of seedling density
 hist(d$seedl_dens_ALL, breaks=200)
@@ -98,11 +101,11 @@ scenario_preds_all = get_scenario_preds(m, d_mod_all_core, predictors, sp = "All
 
 ## For PINES
 # Prep data
-d_sp = prep_d_sp("YLWPINES")
+d_sp = prep_d_sp("PINES")
 d_mod_pines_core = prep_d_core_mod(d_sp) |>
   mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
          cone_dens_sp = cone_dens_sp * 314) |>
-  mutate(species = "Yellow pines", type = "Core")
+  mutate(species = "Pines", type = "Core")
 # Plot raw data
 plot_raw_data(d_sp)
 # Fit GAM
@@ -136,11 +139,11 @@ scenario_preds_all_sw = get_scenario_preds(m, d_mod_all_sw, predictors, sp = "Al
 
 
 ## For PINES seedwall GAM fits 
-d_sp = prep_d_sp("YLWPINES")
+d_sp = prep_d_sp("PINES")
 d_mod_pines_sw = prep_d_sw_mod(d_sp, max_sw_dist = 30) |>
   mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
          cone_dens_sp = cone_dens_sp * 314) |>
-  mutate(species = "Yellow pines", type = "Seed wall")
+  mutate(species = "Pines", type = "Seed wall")
 m = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(fire_intens2, k = 3), data = d_mod_pines_sw, family = poisson)
 m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3), data = d_mod_pines_sw, family = poisson)
 pines_sw_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
@@ -169,7 +172,7 @@ p2 = make_scenario_ggplot(scenario_preds, d_mods, "ppt", "Mean annual precipitat
 
 p = ggarrange(p1, p2 + rremove("ylab") + rremove("y.text"), common.legend = TRUE, widths = c(1.2,1))
 
-png(file.path(datadir, "figures/main_model_fits.png"), res = 350, width = 2000, height = 1000)
+png(file.path(datadir, "figures/main_model_fits.png"), res = 350, width = 2000, height = 1100)
 p
 dev.off()
 

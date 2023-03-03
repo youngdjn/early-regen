@@ -34,10 +34,14 @@ prep_d_sp = function(sp) {
 #### Plot raw seedling density data vs day of burning
 
 plot_raw_data = function(d_sp) {
-  
+
   # make zeros nonzero
   d_sp = d_sp |>
     mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.001592357, 0.001592357, seedl_dens_sp))
+  
+  ## Turn day of burning to a date
+  d_sp = d_sp |>
+    mutate(date_of_burning = ymd("2021-01-01") + day_of_burning-1) # For fires the burned in other years will need more flexible here
   
   # core area plots, far from any green of the focal speices
   d_sp_nogrn = d_sp |>
@@ -67,7 +71,7 @@ plot_raw_data = function(d_sp) {
   allplots = bind_rows(d_sp_nogrn_fig, d_sp_sw) |>
     mutate(plot_type = recode(plot_type, "delayed" = "core")) # this may select some delayed mortality plots that behave as core plots because they're > 100 m from green.
   
-  p = ggplot(allplots, aes(x = day_of_burning, y = ppt, color = fire, shape = plot_type)) +
+  p = ggplot(allplots, aes(x = date_of_burning, y = ppt, color = fire, shape = plot_type)) +
     geom_jitter(width = 2)
   
   print(p)
@@ -75,8 +79,10 @@ plot_raw_data = function(d_sp) {
   
   
   # make a copy of the constant df defining the windows in order to store the median vals for this species
-  windows_foc = windows
-  
+  windows_foc = windows |>
+  # convert the windows day of year to date
+    mutate(across(c(start,end), ~ (ymd("2021-01-01") + . - 1)))
+    
   # compute median seel density by seedwall, scorch, torch within each predefined date window
   for(i in 1:nrow(windows_foc)) {
     
@@ -84,18 +90,18 @@ plot_raw_data = function(d_sp) {
     
     core_blk_foc = d_sp_nogrn_fig |>
       filter(fire == window$fire) |>
-      filter(between(day_of_burning, window$start, window$end)) |>
+      filter(between(date_of_burning, window$start, window$end)) |>
       filter(fire_intens_cat_foc == "Torched",)
     core_blk_median = median(core_blk_foc$seedl_dens_sp)
     
     core_brn_foc = d_sp_nogrn_fig |>
       filter(fire == window$fire) |>
-      filter(between(day_of_burning, window$start, window$end)) |>
+      filter(between(date_of_burning, window$start, window$end)) |>
       filter(fire_intens_cat_foc == "Scorched")
     core_brn_median = median(core_brn_foc$seedl_dens_sp)
     
     sw_foc = d_sp_sw |>
-      filter(between(day_of_burning, window$start, window$end))
+      filter(between(date_of_burning, window$start, window$end))
     sw_median = median(sw_foc$seedl_dens_sp)
     
     windows_foc[i,"seedwall_median"] = sw_median
@@ -104,7 +110,8 @@ plot_raw_data = function(d_sp) {
     
   }
   
-  p = ggplot(d_sp_nogrn_fig, aes(x = day_of_burning, y = seedl_dens_sp)) +
+  # Make fig
+  p = ggplot(d_sp_nogrn_fig, aes(x = date_of_burning, y = seedl_dens_sp)) +
     geom_hline(yintercept = 0.0173, linetype = "dashed", color="gray70") +
     geom_jitter(data = d_sp_sw, color="#A2D435", size=3, height=0, width=2, aes(shape=dist_sw_cat)) +
     geom_jitter(size=3, height = 0, width=2, aes(color = fire_intens_cat_foc)) +
@@ -113,8 +120,13 @@ plot_raw_data = function(d_sp) {
     scale_shape_manual(values = c("Near" = 1, "Very near" = 19)) +
     facet_grid(~fire) +
     theme_bw(15) +
-    labs(x = "Day of Burning", y = "Seedlings / sq m") +
+    theme(strip.background = element_rect(fill = "white"),
+          legend.position = c(0.12,.67),
+          legend.background = element_blank(),
+          legend.box.background = element_rect(fill="white", color = "black", linewidth = 0.3)) +
+    labs(x = "Day of Burning", y = bquote(Seedlings~m^-2)) +
     scale_y_continuous(breaks = c(.001,.01,.1,1,10,100), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50), labels = label_comma(big.mark=",")) +
+    scale_x_date(date_labels = "%d-%b", minor_breaks = NULL) +
     coord_trans(y = "log") +
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = seedwall_median, yend = seedwall_median), linewidth = 1.5, color = "white") +
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_blk_median, yend = core_blk_median), linewidth = 1.5, color = "white") +
@@ -123,7 +135,9 @@ plot_raw_data = function(d_sp) {
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_blk_median, yend = core_blk_median), linewidth = 1, color = "black") +
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_brn_median, yend = core_brn_median), linewidth = 1, color = "#9D5B0B")
   
-  print(p)
+  png(file.path(datadir, "figures/raw_data.png"), res = 450, width = 4500, height = 2400)
+  p
+  dev.off()
   
 }
 
