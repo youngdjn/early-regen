@@ -281,16 +281,19 @@ make_scenario_w_ppt_ggplot = function(scenario_preds, d_mod, focal_predictor, pr
     p = p + geom_point(data = d_mod, mapping = aes(y = seedl_dens_sp))
   }
   
-  p = p +
-    scale_color_viridis_d(begin = .2, end = .8, name = "Normal annual precipitation") +
-    scale_fill_viridis_d(begin = .2, end = .8, name = "Normal annual precipitation") +
+  p2 = p +
+    scale_color_viridis_d(begin = .2, end = .8, name = "Normal annual\nprecipitation") +
+    scale_fill_viridis_d(begin = .2, end = .8, name = "Normal annual\nprecipitation") +
     geom_ribbon(aes(ymin = preds_lwr, ymax = preds_upr), color=NA, alpha = .3, show.legend = FALSE) +
     geom_line() +
     scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), limits = c(ymin, ymax), labels = label_comma()) +
     coord_trans(y = "log") +
     theme_bw() +
+    theme(legend.position = c(0.2,.2),
+          legend.background = element_blank(),
+          legend.box.background = element_rect(fill="white", color = "black", linewidth = 0.3)) +
     labs(y = bquote(Seedlings~m^-2), x = predictor_label)
   
-  p
+  p2
   
 }
