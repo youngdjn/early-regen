@@ -118,7 +118,7 @@ sum(influence(m))
 #plot(m)
 # Prep scenario plotting data
 predictors = c("fire_intens2", "ppt", "cone_dens_sp", "prefire_prop_sp")
-scenario_preds_pines = get_scenario_preds(m, d_mod_pines_core, predictors, sp = "Yellow pines", percentile_exclude = percentile_exclude) |> mutate(type = "Core")
+scenario_preds_pines = get_scenario_preds(m, d_mod_pines_core, predictors, sp = "Pines", percentile_exclude = percentile_exclude) |> mutate(type = "Core")
 
 
 
@@ -151,7 +151,7 @@ pines_sw_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$devianc
 summary(m)
 # Prep scenario plotting data
 predictors = c("fire_intens2", "ppt", "cone_dens_sp", "prefire_prop_sp", "grn_vol_sp")
-scenario_preds_pines_sw = get_scenario_preds(m, d_mod_pines_sw, predictors, sp = "Yellow pines", percentile_exclude = percentile_exclude) |> mutate(type = "Seed wall")
+scenario_preds_pines_sw = get_scenario_preds(m, d_mod_pines_sw, predictors, sp = "Pines", percentile_exclude = percentile_exclude) |> mutate(type = "Seed wall")
 
 
 
@@ -203,4 +203,135 @@ png(file.path(datadir, "figures/fits_w_data.png"), res = 350, width = 2200, heig
 p1
 dev.off()
 
+
+
+### Plot relationship between cone density and seedling density by species, and by scorched vs torched
+
+d_ylwpines = prep_d_sp("YLWPINES") |> prep_d_core_mod() |> mutate(species = "Yellow pine")
+#d_psme = prep_d_sp("PSME") |> prep_d_core_mod() |> mutate(species = "Douglas-fir")
+#d_pila = prep_d_sp("PILA") |> prep_d_core_mod() |> mutate(species = "Sugar pine")
+
+d_sps = bind_rows(d_ylwpines)
+
+# We can use d_sps for modeling. Next we will modify it to cause some data loss by turning 0s to nonzero so we can plot on log scale
+
+
+
+# get median cone density by sp
+medians = d_sps |>
+  group_by(species) |>
+  summarize(median_dens = median(cone_dens_sp))
+
+# bind this to the data so we can compute whether each obs was above or below the median
+d_sps = left_join(d_sps,medians)
+
+
+d_fig = d_sps |>
+  # Put counts back on per sq m scale
+  mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5/314, 0.5/314, seedl_dens_sp)) |>
+  mutate(cone_dens_sp = ifelse(cone_dens_sp < 0.5/314, 0.5/314, cone_dens_sp)) |>
+  mutate(cone_dens_sp_cat = ifelse(cone_dens_sp >= median_dens, "High", "Low")) |>
+  mutate(cone_dens_sp_cat = factor(cone_dens_sp_cat, levels = c("Low","High"))) |>
+  mutate(under_cones_new_sp = ifelse(under_cones_new_sp == "low", "Low", "High")) |>
+  mutate(under_cones_new_sp = factor(under_cones_new_sp, levels = c("Low","High")))
+
+color_breaks = c(0.001, 0.01, 0.1, 1, 10, 100)
+
+p1 = ggplot(d_fig, aes(x = cone_dens_sp_cat, y = seedl_dens_sp, color = cone_dens_sp)) +
+  geom_jitter(height = 0, width = 0.15) +
+  scale_color_viridis_c(trans = "log", name = bquote(Cones~m^-2), breaks = color_breaks, labels = color_breaks, limits = c(0.001,5), oob = squish) +
+  coord_trans(y = "log") +
+  geom_boxplot(data = d_fig, coef = 0, outlier.shape = NA, fill = NA, width = 0.4) +
+  scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), labels = label_comma()) +
+  labs(x = "Plot cone density", y = bquote(Yellow~pine~seedlings~m^-2)) +
+  theme_bw() +
+  theme(panel.grid.major.x = element_blank())
+p1
+
+p2 = ggplot(d_fig, aes(x = under_cones_new_sp, y = seedl_dens_sp)) +
+  geom_jitter(height = 0, width = 0.15, color = "gray60") +
+  coord_trans(y = "log") +
+  geom_boxplot(data = d_fig, coef = 0, outlier.shape = NA, fill = NA, width = 0.4) +
+  scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), labels = label_comma()) +
+  labs(x = "Single-tree cone density", y = bquote(Yellow~pine~seedlings~m^-2)) +
+  theme_bw() +
+  theme(panel.grid.major.x = element_blank())
+
+p = ggarrange(p2, p1 + rremove("ylab") + rremove("y.text"), widths = c(1,1.25))
+
+png(file.path(datadir, "figures/cone_dens_boxplots.png"), res = 500, width = 2600, height = 1600)
+p
+dev.off()
+
+
+
+
+
+
+# 
+# 
+# 
+# 
+# 
+# 
+# m1 = gam(seedl_dens_sp ~ cone_dens_sp_log + s(fire_intens2, k = 3), data = d_mod_core, family = poisson())
+# 
+# summary(m1)
+# 
+# d_fig = d_mod_core |>
+#   # Put counts back on per sq m scale
+#   mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5, 0.5, seedl_dens_sp) / 314) |>
+#   mutate(cone_dens_sp = ifelse(cone_dens_sp < 0.5/314, 0.5/314, cone_dens_sp))
+# 
+# 
+# 
+# ggplot(d_fig, aes(x = cone_dens_sp, y = seedl_dens_sp, color = fire_intens2 > 78.75)) +
+#   geom_point() +
+#   scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), labels = label_comma()) +
+#   scale_x_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), labels = label_comma()) +
+#   coord_trans(y = "log", x = "log")
+# 
+# ggplot(d_fig, aes(x = under_cones_new_sp, y = seedl_dens_sp, color = fire_intens2 > 78)) +
+#   geom_boxplot() +
+#   geom_point() +
+#   coord_trans(y = "log", x = "log")
+# 
+# ggplot(d_fig, aes(x = cone_dens_sp, y = fire_intens2)) +
+#   geom_point() +
+#   coord_trans(x = "log")
+# 
+# ggplot(d_fig, aes(x = under_cones_new_sp, y = fire_intens2)) +
+#   geom_point() +
+#   geom_boxplot() +
+#   coord_trans(x = "log")
+# 
+# 
+# 
+# ## for 3 species we need the continuous seedl~cones plot
+# 
+# 
+# intens_split = 78.75
+# predictors = c("cone_dens_sp_log")
+# scenario_preds = get_scenario_preds(m1, d_mod_core, predictors, sp = "YLWPINES", percentile_exclude = percentile_exclude, interacting_predictor = "fire_intens2", interacting_splits = intens_split) |> mutate(type = "Core")
+# 
+# 
+# 
+# p1 = make_scenario_w_intens_ggplot(scenario_preds, d_mod_core, "cone_dens_sp", "Cones / sq m", ymin = NULL, ymax = NULL, interacting_splits = intens_split, show_data = TRUE)
+# p1
+# 
+# 
+# 
+# ## test with ggplot
+# 
+# d_test = d_mod_core |>
+#   mutate(seedl_dens_sp = ifelse(seedl_dens_sp  == 0, 1, seedl_dens_sp))
+# 
+# ggplot(d_test, aes(x = cone_dens_sp_log, y = seedl_dens_sp)) +
+#   geom_point() +
+#   coord_trans(y = "log") +
+#   geom_smooth(method = mgcv::gam, family = poisson, method.args=list(family="poisson"))
+# 
+# 
+# 
+# ## For pines we need the boxplot
 

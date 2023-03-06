@@ -188,10 +188,11 @@ plots[grepl("S039-", plots$plot_id, fixed = TRUE),] = plots_s039
 plots = plots |>
   mutate(prefire_prop_PINES = prefire_prop_pipj + prefire_prop_pila + prefire_prop_pico + prefire_prop_pimo,
          prefire_prop_ABIES = prefire_prop_abco + prefire_prop_abma,
-         prefire_prop_YLWPINES = prefire_prop_pipj,
+         prefire_prop_ALL = 100) |>
+  rename(prefire_prop_YLWPINES = prefire_prop_pipj,
          prefire_prop_ABCO = prefire_prop_abco,
          prefire_prop_PSME = prefire_prop_psme,
-         prefire_prop_ALL = 100)
+         prefire_prop_PILA = prefire_prop_pila)
 
 
 
@@ -266,7 +267,7 @@ seedl = seedl |>
 
 ## CAVEAT Have to assume the two instances of calling cones_new "H" was about 15 cones (for new cones within the plot)
 seedl[which(seedl$cones_new == "H"),"cones_new"] = "15"
-
+seedl[which(seedl$cones_old == "H"),"cones_old"] = "15"
 
 # Compute seedlings/sqm and cones/sqm, filter anomalously entered values
 seedl = seedl %>%
@@ -283,10 +284,19 @@ seedl = seedl %>%
   mutate(under_cones_new = recode(under_cones_new, "H" = "2", "L" = "1")) |> # Change letter coding for "high" and "low" to number levels
   # #### FOR FINDING THE NON-NUMERIC VALUES (e.g., counts ending in "+"):
   # mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "under_cones_new"), ~ifelse(is.na(.), "0", .))) |> # set all NAs to a number so that the next step will reveal which were non-numeric (because they'll get set to NAs) # TODO: If we eventually want to ask about cones-old and caches, we need to take care of this for those columns too.
-  mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "under_cones_new"), ~as.numeric(as.character(.)))) |> # Convert everything to numeric
+  mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "cones_old", "under_cones_new"), ~as.numeric(as.character(.)))) |> # Convert everything to numeric
   mutate(radius = ifelse(radius == .0, 10, radius)) |> ## TODO: note this quick fix to address comment above
+  # Some cones from 2022 were listed as "old" but this is a mistake because it is not possible for core area cones to be old
+  # TODO for >=2nd yr analysis or if analyzing seed wall cone density where there can be older cones: need to make this more flexible to only fix core area cones from first year
+  mutate(cones_tot = ifelse(is.na(cones_new), 0, cones_new) + ifelse(is.na(cones_old), 0, cones_old)) |>
+  # Compute densities
   mutate(seedl_dens = seedlings_0yr / (3.14*radius^2),
-         cone_dens = cones_new / (3.14*8^2))
+         cone_dens = cones_tot / (3.14*8^2))
+
+
+
+####!!! TODO for 2021 data: 
+
 
 # Set our placeholder "na" for seedwall cones to a true NA, make numeric and compute density
 seedl[which(seedl$seedwall_cones == "na"),"seedwall_cones"] = NA
