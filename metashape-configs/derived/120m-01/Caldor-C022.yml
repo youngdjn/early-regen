@@ -1,0 +1,80 @@
+load_project: ''
+photo_path: /ofo-share/early-regen_dronedata-partial/imagery-raw-120m/priority-3/Caldor_C022
+multispectral: no
+output_path: /ofo-share/early-regen_dronedata-partial/imagery-processed/outputs/120m-01
+project_path: /ofo-share/early-regen_dronedata-partial/imagery-processed/meta-projects/120m-01
+run_name: from_config_filename
+project_crs: EPSG::3310
+subdivide_task: yes
+use_cuda: yes
+gpu_multiplier: 2
+use_rtk: yes
+fix_accuracy: 3
+nofix_accuracy: 25
+addGCPs:
+  enabled: no
+  gcp_crs: EPSG::26910
+  marker_location_accuracy: 0.1
+  marker_projection_accuracy: 8
+  optimize_w_gcps_only: yes
+calibrateReflectance:
+  enabled: no
+  panel_filename: RP04-1923118-OB.csv
+  use_reflectance_panels: yes
+  use_sun_sensor: yes
+alignPhotos:
+  enabled: yes
+  downscale: 2
+  adaptive_fitting: yes
+  keep_keypoints: yes
+  reset_alignment: no
+  generic_preselection: yes
+  reference_preselection: yes
+  reference_preselection_mode: Metashape.ReferencePreselectionSource
+filterPointsUSGS:
+  enabled: yes
+  rec_thresh_percent: 20
+  rec_thresh_absolute: 15
+  proj_thresh_percent: 30
+  proj_thresh_absolute: 2
+  reproj_thresh_percent: 5
+  reproj_thresh_absolute: 0.3
+optimizeCameras:
+  enabled: yes
+  adaptive_fitting: yes
+buildPointCloud:
+  enabled: yes
+  downscale: 4
+  filter_mode: Metashape.ModerateFiltering
+  reuse_depth: no
+  keep_depth: no
+  max_neighbors: 100
+  classify_ground_points: yes
+  export: yes
+  classes: ALL
+classifyGroundPoints:
+  max_angle: 15.0
+  max_distance: 1.0
+  cell_size: 50.0
+buildDem:
+  enabled: yes
+  classify_ground_points: no
+  type: both
+  export: yes
+  tiff_big: yes
+  tiff_tiled: no
+  nodata: -32767
+  tiff_overviews: yes
+buildOrthomosaic:
+  enabled: yes
+  surface: DSM
+  usgs_dem_path: dem_usgs/dem_usgs.tif
+  usgs_dem_crs: EPSG::4269
+  blending: Metashape.MosaicBlending
+  fill_holes: yes
+  refine_seamlines: yes
+  export: yes
+  tiff_big: yes
+  tiff_tiled: no
+  nodata: -32767
+  tiff_overviews: yes
