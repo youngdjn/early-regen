@@ -23,10 +23,15 @@ prep_d_sp = function(sp) {
            grn_vol_abs_sp = starts_with(grn_vol_abs_var),
            under_cones_new_sp = starts_with(under_cones_new_var),
            cone_dens_sp = starts_with(cone_dens_var),
-           prefire_prop_sp = matches(paste0("^", prefire_prop_var, "$"), ignore.case = FALSE)) |>
+           prefire_prop_sp = matches(paste0("^", prefire_prop_var, "$"), ignore.case = FALSE),
+           starts_with("seedl_dens_")) |>
     filter(ifelse(plot_type == "seedwall", grn_vol_sp > 20, prefire_prop_sp > 20)) |> # the criteria for keeping the plot based on its species comp depend on whether it's a seed wall or core area plot (for seed wall use seed wall comp)
-    mutate(under_cones_new_sp = recode(paste0("level_", under_cones_new_sp), "level_0" = "low", "level_1" = "low", "level_2" = "high")) |>
-    mutate(cone_dens_sp_log = log(ifelse(cone_dens_sp == 0, 0.5/(3.14*8^2), cone_dens_sp)))
+    mutate(under_cones_new_sp = recode(paste0("level_", under_cones_new_sp), "level_0" = "low", "level_1" = "low", "level_2" = "high"))
+  
+  if(! sp %in% c("ABIES","ABCO", "CADE")) {
+    d_sp = d_sp |>
+      mutate(cone_dens_sp_log = log(ifelse(cone_dens_sp == 0, 0.5/(3.14*8^2), cone_dens_sp)))
+  }
   
   return(d_sp)
 }
@@ -34,11 +39,11 @@ prep_d_sp = function(sp) {
 
 #### Plot raw seedling density data vs day of burning
 
-plot_raw_data = function(d_sp) {
+plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
 
   # make zeros nonzero
   d_sp = d_sp |>
-    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.001592357, 0.001592357, seedl_dens_sp))
+    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.00001, 0.0005, seedl_dens_sp))
   
   ## Turn day of burning to a date
   d_sp = d_sp |>
@@ -72,11 +77,21 @@ plot_raw_data = function(d_sp) {
   allplots = bind_rows(d_sp_nogrn_fig, d_sp_sw) |>
     mutate(plot_type = recode(plot_type, "delayed" = "core")) # this may select some delayed mortality plots that behave as core plots because they're > 100 m from green.
   
-  p = ggplot(allplots, aes(x = date_of_burning, y = ppt, color = fire, shape = plot_type)) +
-    geom_jitter(width = 2)
+  d_fig = allplots |>
+    mutate(plot_type = recode(plot_type, "core" = "Interior", "seedwall" = "Edge"))
+  
+  p = ggplot(d_fig, aes(x = date_of_burning, y = ppt, color = fire, shape = plot_type)) +
+    geom_jitter(width = 3, size = 3) +
+    theme_bw(15) +
+    scale_shape(name = "Plot type") +
+    scale_color_viridis_d(name = "Fire", begin = 0.2, end = 0.8) +
+    labs(x = "Date of burning", y = "Mean annual precipitation (mm)")
   
   print(p)
   
+  png(file.path(datadir, paste0("figures/supp_ppt_dob_", filename, ".png")), res = 200, width = 1500, height = 1100)
+  print(p)
+  dev.off()  
   
   
   # make a copy of the constant df defining the windows in order to store the median vals for this species
@@ -102,6 +117,7 @@ plot_raw_data = function(d_sp) {
     core_brn_median = median(core_brn_foc$seedl_dens_sp)
     
     sw_foc = d_sp_sw |>
+      filter(fire == window$fire) |>
       filter(between(date_of_burning, window$start, window$end))
     sw_median = median(sw_foc$seedl_dens_sp)
     
@@ -114,10 +130,11 @@ plot_raw_data = function(d_sp) {
   # Make fig
   p = ggplot(d_sp_nogrn_fig, aes(x = date_of_burning, y = seedl_dens_sp)) +
     geom_hline(yintercept = 0.0173, linetype = "dashed", color="gray70") +
+    #geom_hline(yintercept = 0.0005, color = "orange") +
     geom_jitter(data = d_sp_sw, color="#A2D435", size=3, height=0, width=2, aes(shape=dist_sw_cat)) +
     geom_jitter(size=3, height = 0, width=2, aes(color = fire_intens_cat_foc)) +
-    labs(shape = "Seed wall") +
-    scale_color_manual(values = c(Torched = "black", Scorched = "#9D5B0B"), name = "Core area") +
+    labs(shape = "Edge") +
+    scale_color_manual(values = c(Torched = "black", Scorched = "#9D5B0B"), name = "Interior") +
     scale_shape_manual(values = c("Near" = 1, "Very near" = 19)) +
     facet_grid(~fire) +
     theme_bw(15) +
@@ -125,8 +142,8 @@ plot_raw_data = function(d_sp) {
           legend.position = c(0.12,.67),
           legend.background = element_blank(),
           legend.box.background = element_rect(fill="white", color = "black", linewidth = 0.3)) +
-    labs(x = "Day of Burning", y = bquote(Conifer~seedlings~m^-2)) +
-    scale_y_continuous(breaks = c(.001,.01,.1,1,10,100), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50), labels = label_comma(big.mark=",")) +
+    labs(x = "Day of Burning", y = axis_label, title = plot_title) +
+    scale_y_continuous(breaks = c(0.0005, .001,.01,.1,1,10,100), minor_breaks = c(0.005, 0.05, 0.5, 5.0, 50), labels = c("[0]", "0.001","0.01", "0.1", "1", "10","100")  ) +
     scale_x_date(date_labels = "%d-%b", minor_breaks = NULL) +
     coord_trans(y = "log") +
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = seedwall_median, yend = seedwall_median), linewidth = 1.5, color = "white") +
@@ -136,8 +153,7 @@ plot_raw_data = function(d_sp) {
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_blk_median, yend = core_blk_median), linewidth = 1, color = "black") +
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_brn_median, yend = core_brn_median), linewidth = 1, color = "#9D5B0B")
 
-  dev.off()
-  png(file.path(datadir, "figures/raw_data.png"), res = 450, width = 4500, height = 2400)
+  png(file.path(datadir, paste0("figures/raw_data_", filename, ".png")), res = 450, width = 4500, height = 2400)
   print(p)
   dev.off()
   
@@ -228,6 +244,7 @@ get_scenario_preds = function(m, d_mod, predictors, sp, percentile_exclude, inte
 
 # Prep seedwall data for modeling
 prep_d_sw_mod = function(d_sp, max_sw_dist) {
+  
   d_mod = d_sp |>
     filter(plot_type == "seedwall") |>
     filter(dist_sw <= max_sw_dist)
@@ -239,11 +256,16 @@ prep_d_sw_mod = function(d_sp, max_sw_dist) {
 make_scenario_ggplot = function(scenario_preds, d_mod, focal_predictor, predictor_label, ymin, ymax) {
   
   d_mod = d_mod |>
-    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5, 0.5, seedl_dens_sp))
+    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5, 0.5, seedl_dens_sp)) |>
+    mutate(type = as.factor(type))
+    
   
-  d_fig = scenario_preds |> filter(predictor_foc == focal_predictor)
+  d_fig = scenario_preds |> filter(predictor_foc == focal_predictor) |>
+    mutate(type = factor(type, levels = c("Interior", "Edge")))
+    
+    
   p = ggplot(data = d_fig, mapping = aes(x = !!ensym(focal_predictor), y = preds, color = species, fill = species, linetype = type)) +
-    scale_linetype(name = "Plot type") +
+    scale_linetype(name = "Plot type", limits = c("Interior", "Edge")) +
     scale_color_viridis_d(begin = .2, end = .8, name = "Species group") +
     scale_fill_viridis_d(begin = .2, end = .8, name = "Species group") +
     geom_ribbon(aes(ymin = preds_lwr, ymax = preds_upr, fill=species), color=NA, alpha = .3, show.legend = FALSE) +
@@ -282,8 +304,8 @@ make_scenario_w_ppt_ggplot = function(scenario_preds, d_mod, focal_predictor, pr
   }
   
   p2 = p +
-    scale_color_viridis_d(begin = .2, end = .8, name = "Normal annual\nprecipitation") +
-    scale_fill_viridis_d(begin = .2, end = .8, name = "Normal annual\nprecipitation") +
+    scale_color_viridis_d(option = "plasma", begin = .2, end = .8, name = "Normal annual\nprecipitation") +
+    scale_fill_viridis_d(option = "plasma", begin = .2, end = .8, name = "Normal annual\nprecipitation") +
     geom_ribbon(aes(ymin = preds_lwr, ymax = preds_upr), color=NA, alpha = .3, show.legend = FALSE) +
     geom_line() +
     scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), limits = c(ymin, ymax), labels = label_comma()) +

@@ -192,7 +192,8 @@ plots = plots |>
   rename(prefire_prop_YLWPINES = prefire_prop_pipj,
          prefire_prop_ABCO = prefire_prop_abco,
          prefire_prop_PSME = prefire_prop_psme,
-         prefire_prop_PILA = prefire_prop_pila)
+         prefire_prop_PILA = prefire_prop_pila,
+         prefire_prop_CADE = prefire_prop_cade)
 
 
 
@@ -263,7 +264,6 @@ seedl = seedl |>
 #### Prep seedling data
 ####!!!! #TODO for 2021 data: For 2021 data, we recorded seedlings (and cones?) in categories like "100+" but then entered the data as "100". For analyzing the 2021 data, set "+" seedling/cone counts (round numbers at the floor of each bin) as the midpoint of the bin?? May also need set 2022 counts similarly to avoid bias.
 ####!!!! #TODO for 2021 data: When bringing in 2021 data, need to make sure that we match the observations to the correct years.
-####!!!! TODO: Why does 2022 plot S039-158 have a psme radius of 0? Assuming below it's supposed to be 10. Need to check
 
 ## CAVEAT Have to assume the two instances of calling cones_new "H" was about 15 cones (for new cones within the plot)
 seedl[which(seedl$cones_new == "H"),"cones_new"] = "15"
@@ -285,7 +285,8 @@ seedl = seedl %>%
   # #### FOR FINDING THE NON-NUMERIC VALUES (e.g., counts ending in "+"):
   # mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "under_cones_new"), ~ifelse(is.na(.), "0", .))) |> # set all NAs to a number so that the next step will reveal which were non-numeric (because they'll get set to NAs) # TODO: If we eventually want to ask about cones-old and caches, we need to take care of this for those columns too.
   mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "cones_old", "under_cones_new"), ~as.numeric(as.character(.)))) |> # Convert everything to numeric
-  mutate(radius = ifelse(radius == .0, 10, radius)) |> ## TODO: note this quick fix to address comment above
+  # 2022 plot S039-158 has a psme radius of 0 (also on data sheet) Assuming it's supposed to be 10.
+  mutate(radius = ifelse(radius == .0, 10, radius)) |>
   # Some cones from 2022 were listed as "old" but this is a mistake because it is not possible for core area cones to be old
   # TODO for >=2nd yr analysis or if analyzing seed wall cone density where there can be older cones: need to make this more flexible to only fix core area cones from first year
   mutate(cones_tot = ifelse(is.na(cones_new), 0, cones_new) + ifelse(is.na(cones_old), 0, cones_old)) |>
