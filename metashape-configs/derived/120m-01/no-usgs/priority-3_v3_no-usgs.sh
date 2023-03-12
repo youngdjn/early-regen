@@ -1,0 +1,13 @@
+python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/no-usgs/Caldor-D014.yml
+#python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/Dixie-C01.yml
+#python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/Dixie-C08.yml
+#python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/Dixie-C10.yml
+#python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/Dixie-C12.yml
+python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/no-usgs/Dixie-C22.yml
+#python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/Creek-043A.yml
+#python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/Creek-C034.yml
+python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/no-usgs/Creek-C062.yml
+python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/no-usgs/Creek-C15.yml
+#python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/Creek-N01.yml
+#python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/Creek-N02.yml
+#python /ofo-share/utils/automate-metashape/python/metashape_workflow.py /ofo-share/repos-derek/early-regen/metashape-configs/derived/120m-01/RMR.yml
