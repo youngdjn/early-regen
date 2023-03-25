@@ -476,6 +476,7 @@ dist_grn = green_seedsource %>%
   mutate(across(any:`abco/abma`, ~ ifelse(.x == "MISSING",NA,.x))) %>% # change "MISSING" to NA because that's OK for the one place it appears (which was in 2021) because on that plot they recorded distance to any species. TODO for 2021: make sure that this logic makes sense.
   select(-metric) %>%
   # within a plot, across seed source cluster IDs, get the closest cluster
+  mutate(across(c(-year, -plot_id, -cluster_id), as.numeric)) |>
   group_by(plot_id) %>%
   summarize(across(-cluster_id, ~ min(.x,na.rm=TRUE)))
 
