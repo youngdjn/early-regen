@@ -542,6 +542,7 @@ plots_complete = plots_complete %>%
 #### Pull in species comp of overstory, compute percent of green and brown by species and species groups
 sp_comp = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.xlsx"), sheet="sp_comp+count") %>%
   # correct some plot IDs that don't match the main plot table
+  filter(year == 2022) |> # TODO: remove this filter to include 2021 data
   mutate(plot_id = recode(plot_id,
                           "C062259" = "C062-259",
                           "C062332" = "C062-332",
@@ -577,6 +578,18 @@ new_row = data.frame(year = 2022,
   mutate(across(pipj:pico, as.character))
 
 sp_comp = bind_rows(sp_comp, new_row)
+
+
+## for plots where the comp sums to > 100, divide the comp values by the total comp so that they sum to 100
+sp_comp_norm = sp_comp |>
+  mutate(across(pipj:"abco/psme", as.numeric)) |> # TODO for 2021: when including 2021 data, there are a couple cells that are non-numeric (text notes) that need to be dealt with
+  mutate(comp_total = rowSums(across(pipj:"abco/psme"), na.rm = TRUE) / 100) |>
+  mutate(comp_total = ifelse(metric %in% c("green_n", "untorched_n"), 1, comp_total)) |> # don't normalize the count columns
+  mutate(comp_total = ifelse(comp_total == 0, 1, comp_total)) |>
+  mutate(across(pipj:"abco/psme", ~./comp_total))
+
+sp_comp = sp_comp_norm |>
+  select(-comp_total)
 
 
 ## Filter to 2022 and Caldor and Dixie only
@@ -644,8 +657,6 @@ which_incomplete_green = (plots_w_comp$vol_grn_50m > 2) & (plots_w_comp$ALL_gree
 
 plotids_incomplete_predrop = plots_w_comp$plot_id[which_incomplete_predrop]
 plotids_incomplete_green = plots_w_comp$plot_id[which_incomplete_green]
-
-## TODO: Find plots where the covers did not sum to 100 (or 0) and rescale all the values so they sum to 100. Make sure there was not a huge discrepancy like they only summed to 70.
 
 
 ## To get species-specific green, multiply *_green_vol by green_vol_prop_50m: this is "proportion of the prefire canopy volume that is green for species" and "proprotion of the prefire canopy volume that is brown for species"
