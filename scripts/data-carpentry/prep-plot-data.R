@@ -171,6 +171,12 @@ plots = plots |>
   mutate(across(starts_with("prefire_prop_"), ~ifelse(.x == "MISSING", NA, .x))) |> # make the MISSING fields NAs
   mutate(across(starts_with("prefire_prop_"), as.numeric))         
   
+# For prfire species comp that sums to > or < 100 across species, normalize it so that it does sum to 100
+plots = plots |>
+  mutate(total_prefire_prop = rowSums(across(starts_with("prefire_prop_")))) |>
+  mutate(across(starts_with("prefire_prop_"), ~./(total_prefire_prop/100))) |>
+  select(-total_prefire_prop)
+
 # Make sure these fields look good
 inspect = plots |>
   select(plot_id, starts_with("prefire_prop_"))
