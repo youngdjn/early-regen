@@ -40,7 +40,7 @@ prep_d_sp = function(sp) {
 #### Plot raw seedling density data vs day of burning
 
 plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
-
+  
   # make zeros nonzero
   d_sp = d_sp |>
     mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.00001, 0.0005, seedl_dens_sp))

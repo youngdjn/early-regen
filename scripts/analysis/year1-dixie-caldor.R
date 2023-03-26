@@ -17,8 +17,8 @@ d = read_csv(file.path(datadir,"field-data/processed/plot-data-prepped.csv"))
 # Keep Caldor and Dixie 2022 only
 d = d |>
   filter(fire %in% c("Caldor", "Dixie")) |>
-  # remove a plot that imagery revealed to be near some marginally green trees
-  filter(!(plot_id %in% "C22-029"))
+  # remove plots that imagery revealed to be near marginally green trees
+  filter(!(plot_id %in% c("C22-029", "C041-500", "D042-207")))
 
 # Check distrib of seedling density
 hist(d$seedl_dens_ALL, breaks=200)
@@ -49,6 +49,7 @@ windows = data.frame(fire = c("Caldor","Caldor", "Dixie", "Dixie", "Dixie"),
 
 #### Analysis
 
+# when plotting model fits, trim to range of data minus what percentile of data points at the extremes
 percentile_exclude = 0.025
 
 ## For ALL SPECIES
@@ -96,47 +97,71 @@ dev.off()
 plot_raw_data(d_sp, axis_label = bquote(Seedlings~m^-2), plot_title = NULL, filename = "all")
 
 
+#### get proportions by species
 
-      
-      ## for all-species data, get proportions by species for core area plots
-      d_spcomp =  d_sp |>
-        filter(grn_vol_abs_sp == 0,
-               ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-               plot_type %in% c("core", "delayed")) |>
-        summarize(ABIES = sum(seedl_dens_ABIES),
-                  CADE = sum(seedl_dens_CADE),
-                  PILA = sum(seedl_dens_PILA),
-                  PSME = sum(seedl_dens_PSME),
-                  PICO = sum(seedl_dens_PICO),
-                  PIPJ = sum(seedl_dens_YLWPINES))
-      
-      d_spcomp$tot = rowSums(d_spcomp)
-      
-      d_spcomp_core = d_spcomp |>
-        mutate(across(everything(), ~. / tot)) |>
-        mutate(across(everything(), ~round(.*100, 1)))
-      
+##TODO: exclude the early burn plots? compute by median?
 
-      d_spcomp =  d_sp |>
-        filter(plot_type == "seedwall") |>
-        filter(dist_sw <= 60) |>
-        summarize(ABIES = sum(seedl_dens_ABIES),
-                  CADE = sum(seedl_dens_CADE),
-                  PILA = sum(seedl_dens_PILA),
-                  PSME = sum(seedl_dens_PSME),
-                  PICO = sum(seedl_dens_PICO),
-                  PIPJ = sum(seedl_dens_YLWPINES))
-      
-      d_spcomp$tot = rowSums(d_spcomp)
-      
-      d_spcomp_sw = d_spcomp |>
-        mutate(across(everything(), ~. / tot)) |>
-        mutate(across(everything(), ~round(.*100, 1)))
-      
+# for core area plots
+d_spcomp =  d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         plot_type %in% c("core", "delayed")) |>
+  summarize(ABIES = sum(seedl_dens_ABIES),
+            CADE = sum(seedl_dens_CADE),
+            PILA = sum(seedl_dens_PILA),
+            PSME = sum(seedl_dens_PSME),
+            PICO = sum(seedl_dens_PICO),
+            PIPJ = sum(seedl_dens_YLWPINES))
+
+d_spcomp$tot = rowSums(d_spcomp)
+
+d_spcomp_core = d_spcomp |>
+  mutate(across(everything(), ~. / tot)) |>
+  mutate(across(everything(), ~round(.*100, 1))) |>
+  mutate(type = "core")
+
+# and seed wall plots
+d_spcomp =  d_sp |>
+  filter(plot_type == "seedwall") |>
+  filter(dist_sw <= 60) |>
+  summarize(ABIES = sum(seedl_dens_ABIES),
+            CADE = sum(seedl_dens_CADE),
+            PILA = sum(seedl_dens_PILA),
+            PSME = sum(seedl_dens_PSME),
+            PICO = sum(seedl_dens_PICO),
+            PIPJ = sum(seedl_dens_YLWPINES))
+
+d_spcomp$tot = rowSums(d_spcomp)
+
+d_spcomp_sw = d_spcomp |>
+  mutate(across(everything(), ~. / tot)) |>
+  mutate(across(everything(), ~round(.*100, 1))) |>
+  mutate(type = "seedwall")
+
+# combine and write
+spcomp = bind_rows(d_spcomp_core, d_spcomp_sw)
+write_csv(spcomp, file.path(datadir, "tables/regen_species_comp.csv"))
 
 
+## write core and seed wall plots used for analysis to shapefile
+library(sf)
+d_spatial = left_join(d_sp, d |> select(plot_id, lat, lon))
+d_spatial = st_as_sf(d_spatial, coords = c("lon","lat"), crs = 4326)
 
-# Fit GAMs
+core_write = d_spatial |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         plot_type %in% c("core", "delayed"))
+
+sw_write =  d_spatial |>
+  filter(plot_type == "seedwall") |>
+  filter(dist_sw <= 60)
+
+st_write(core_write, file.path(datadir, "intermediate-inspection/core_allsp_v2.gpkg"), delete_dsn = TRUE)
+st_write(sw_write, file.path(datadir, "intermediate-inspection/sw_allsp_v2.gpkg"), delete_dsn = TRUE)
+
+
+#### Fit GAMs
 d_sp = prep_d_sp("ALL")
 d_mod_all_core = prep_d_core_mod(d_sp) |>
   mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
