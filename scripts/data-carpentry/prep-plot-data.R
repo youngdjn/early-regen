@@ -282,14 +282,18 @@ seedl = seedl %>%
   # a plot radius listed as "Q" (always from 2022) means one quadrant of the smallest plot size (4 m). So give it the radius of a circular plot with equivalent area (2 m)
   mutate(radius = recode(radius, "Q" = "2", "q" = "2")) |>
   mutate(under_cones_new = recode(under_cones_new, "H" = "2", "L" = "1")) |> # Change letter coding for "high" and "low" to number levels
-  # #### FOR FINDING THE NON-NUMERIC VALUES (e.g., counts ending in "+"):
+  mutate(under_cones_old = recode(under_cones_old, "H" = "2", "L" = "1")) |> # Change letter coding for "high" and "low" to number levels
+    # #### FOR FINDING THE NON-NUMERIC VALUES (e.g., counts ending in "+"):
   # mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "under_cones_new"), ~ifelse(is.na(.), "0", .))) |> # set all NAs to a number so that the next step will reveal which were non-numeric (because they'll get set to NAs) # TODO: If we eventually want to ask about cones-old and caches, we need to take care of this for those columns too.
-  mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "cones_old", "under_cones_new"), ~as.numeric(as.character(.)))) |> # Convert everything to numeric
+  mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "cones_old", "under_cones_new", "under_cones_old"), ~as.numeric(as.character(.)))) |> # Convert everything to numeric
   # 2022 plot S039-158 has a psme radius of 0 (also on data sheet) Assuming it's supposed to be 10.
   mutate(radius = ifelse(radius == .0, 10, radius)) |>
   # Some cones from 2022 were listed as "old" but this is a mistake because it is not possible for core area cones to be old
   # TODO for >=2nd yr analysis or if analyzing seed wall cone density where there can be older cones: need to make this more flexible to only fix core area cones from first year
+  #      This is for both plot cones and under-tree cones
   mutate(cones_tot = ifelse(is.na(cones_new), 0, cones_new) + ifelse(is.na(cones_old), 0, cones_old)) |>
+  mutate(under_cones_tot = pmax(under_cones_new, under_cones_old, na.rm = TRUE)) |>
+  mutate(under_cones_new = under_cones_tot) |>
   # Compute densities
   mutate(seedl_dens = seedlings_0yr / (3.14*radius^2),
          cone_dens = cones_tot / (3.14*8^2))
