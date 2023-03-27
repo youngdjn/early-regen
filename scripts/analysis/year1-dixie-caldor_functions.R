@@ -24,7 +24,8 @@ prep_d_sp = function(sp) {
            under_cones_new_sp = starts_with(under_cones_new_var),
            cone_dens_sp = starts_with(cone_dens_var),
            prefire_prop_sp = matches(paste0("^", prefire_prop_var, "$"), ignore.case = FALSE),
-           starts_with("seedl_dens_")) |>
+           starts_with("seedl_dens_"),
+           starts_with("prefire_prop_")) |>
     filter(ifelse(plot_type == "seedwall", grn_vol_sp > 20, prefire_prop_sp > 20)) |> # the criteria for keeping the plot based on its species comp depend on whether it's a seed wall or core area plot (for seed wall use seed wall comp)
     mutate(under_cones_new_sp = recode(paste0("level_", under_cones_new_sp), "level_0" = "low", "level_1" = "low", "level_2" = "high"))
   
@@ -64,14 +65,14 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
     mutate(dist_sw_cat = as.factor(dist_sw_cat)) |>
     mutate(dist_sw_cat = factor(dist_sw_cat, levels = c("Very near", "Near")))
   
-  cat("Median scorching extent", median(d_sp_nogrn$fire_intens2), "\n")
+  median_scorching_extent = median(d_sp_nogrn$fire_intens2)
+  cat("Median scorching extent", median_scorching_extent, "\n")
   
   # prep for figure: classify fire intens
   d_sp_nogrn_fig = d_sp_nogrn |>
-    mutate(fire_intens2_cat = ifelse(fire_intens2 < median(fire_intens2), "Scorched", "Torched")) |>
+    mutate(fire_intens2_cat = ifelse(fire_intens2 < median_scorching_extent, "Scorched", "Torched")) |>
     mutate(fire_intens_cat_foc = fire_intens2_cat)
-  
-  
+
   
   ### Context figure: plot day of burning, precip, and plot type
   allplots = bind_rows(d_sp_nogrn_fig, d_sp_sw) |>
@@ -86,8 +87,6 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
     scale_shape(name = "Plot type") +
     scale_color_viridis_d(name = "Fire", begin = 0.2, end = 0.8) +
     labs(x = "Date of burning", y = "Mean annual precipitation (mm)")
-  
-  print(p)
   
   png(file.path(datadir, paste0("figures/supp_ppt_dob_", filename, ".png")), res = 200, width = 1500, height = 1100)
   print(p)
@@ -156,6 +155,8 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
   png(file.path(datadir, paste0("figures/raw_data_", filename, ".png")), res = 450, width = 4500, height = 2400)
   print(p)
   dev.off()
+  
+  return(median_scorching_extent)
   
 }
 
@@ -283,8 +284,9 @@ make_scenario_ggplot = function(scenario_preds, d_mod, focal_predictor, predicto
 
 make_scenario_w_ppt_ggplot = function(scenario_preds, d_mod, focal_predictor, predictor_label, ymin, ymax, interacting_splits = NA, show_data = FALSE) {
   
-  d_mod = d_mod |>
-    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5, 0.5, seedl_dens_sp) / 314) |>
+  
+  d_mod = d_mod |> # in d_mod, seedl_dens_sp is actually count of seedlings in a 10 m radius plot (for poisson purposes)
+    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5, 0.0005*314, seedl_dens_sp) / 314) |> # get seedlings per sq m, but with zeros set to 0.0005
     mutate(ppt_cat = ifelse(ppt >= interacting_splits, paste0(">= ", interacting_splits, " mm"), paste0("< ", interacting_splits, " mm")))
   
   d_fig = scenario_preds |> filter(predictor_foc == focal_predictor) |>
@@ -308,7 +310,7 @@ make_scenario_w_ppt_ggplot = function(scenario_preds, d_mod, focal_predictor, pr
     scale_fill_viridis_d(option = "plasma", begin = .2, end = .8, name = "Normal annual\nprecipitation") +
     geom_ribbon(aes(ymin = preds_lwr, ymax = preds_upr), color=NA, alpha = .3, show.legend = FALSE) +
     geom_line() +
-    scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), limits = c(ymin, ymax), labels = label_comma()) +
+    scale_y_continuous(breaks = c(0.0005, .001,.01,.1,1,10,100, 1000), minor_breaks = c(0.005, 0.05, 0.5, 5.0, 50, 500), limits = c(ymin, ymax), labels = c("[0]", "0.001","0.01", "0.1", "1", "10","100", "1000")) +
     coord_trans(y = "log") +
     theme_bw() +
     theme(legend.position = c(0.2,.2),

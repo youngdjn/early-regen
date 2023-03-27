@@ -82,7 +82,7 @@ p = ggplot(d_sw, aes(x = day_of_burning, y = dist_sw, color = fire, shape = fire
   theme_bw(15) +
   scale_shape(name = "Fire") +
   scale_color_viridis_d(name = "Fire", begin = 0.2, end = 0.8) +
-  scale_x_continuous(breaks = c(182, 196, 213, 227, 244, 258), labels = c("01-Jul", "15-Jul", "01-Aug","15-Aug", "01-Sep", "15-Sep"), name = "Day of burning") +
+  scale_x_continuous(breaks = c(182, 196, 213, 227, 244, 258), labels = c("01-Jul", "15-Jul", "01-Aug","15-Aug", "01-Sep", "15-Sep"), name = "Date of burning") +
   labs(y = "Distance to edge (m)")
 
 png(file.path(datadir, "figures/supp_dist_dob.png"), res = 200, width = 1500, height = 1100)
@@ -93,43 +93,92 @@ dev.off()
 # so this may exaggerate the regeneration density of core plots compared against them
 
 
-# Plot raw data
-plot_raw_data(d_sp, axis_label = bquote(Seedlings~m^-2), plot_title = NULL, filename = "all")
+# Plot raw data. This function saves to figure files, and also returns the median scorching extent (value of d_sp$fire_intens2)
+median_scorching_extent = plot_raw_data(d_sp, axis_label = bquote(Seedlings~m^-2), plot_title = NULL, filename = "all")
+
+# Plot raw data for pinus
+d_sp = prep_d_sp("PINES")
+median_scorching_extent = plot_raw_data(d_sp, axis_label = bquote(Seedlings~m^-2), plot_title = "Pines", filename = "pines")
 
 
-#### get proportions by species
+#### Summary statistics to report in paper
+d_sp = prep_d_sp("ALL")
 
-##TODO: exclude the early burn plots? compute by median?
+### Overall seedling densities
+d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         plot_type %in% c("core", "delayed")) |>
+  summarize(dens_mean = mean(seedl_dens_sp),
+            dens_median = median(seedl_dens_sp))
+
+## Same but excluding early burn plots and highly torched plots
+d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         plot_type %in% c("core", "delayed"),
+         day_of_burning > 210,
+         fire_intens2 < median_scorching_extent) |>
+  summarize(dens_mean = mean(seedl_dens_sp),
+            dens_median = median(seedl_dens_sp))
+
+## Seed wall plots
+d_sp |>
+  filter(plot_type == "seedwall") |>
+             filter(dist_sw <= 60) |>
+  summarize(dens_mean = mean(seedl_dens_sp),
+            dens_median = median(seedl_dens_sp))
+
+## Seed wall plots burning in mid-Aug
+d_sp |>
+  filter(plot_type == "seedwall") |>
+  filter(dist_sw <= 60,
+         day_of_burning >= 222,
+         day_of_burning <= 232) |>
+  summarize(dens_mean = mean(seedl_dens_sp),
+            dens_median = median(seedl_dens_sp),
+            nplots = n())
+
+## Proportion of core area plots burning mid-Aug
+d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         plot_type %in% c("core", "delayed"),
+         day_of_burning > 222,
+         day_of_burning <= 232) |>
+  nrow()
+
+## Total number of core area plots
+d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         plot_type %in% c("core", "delayed")) |>
+  nrow()
+
+### proportions by species of seedlings
+# exclude the early burn plots, compute by median
 
 # for core area plots
 d_spcomp =  d_sp |>
   filter(grn_vol_abs_sp == 0,
          ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         day_of_burning > 210,
          plot_type %in% c("core", "delayed")) |>
-  summarize(ABIES = sum(seedl_dens_ABIES),
-            CADE = sum(seedl_dens_CADE),
-            PILA = sum(seedl_dens_PILA),
-            PSME = sum(seedl_dens_PSME),
-            PICO = sum(seedl_dens_PICO),
-            PIPJ = sum(seedl_dens_YLWPINES))
-
+  summarize(across(c(seedl_dens_ABIES,seedl_dens_CADE,seedl_dens_PILA,seedl_dens_PSME,seedl_dens_PICO,seedl_dens_YLWPINES), median))
 d_spcomp$tot = rowSums(d_spcomp)
 
 d_spcomp_core = d_spcomp |>
   mutate(across(everything(), ~. / tot)) |>
   mutate(across(everything(), ~round(.*100, 1))) |>
   mutate(type = "core")
+d_spcomp_core
 
 # and seed wall plots
 d_spcomp =  d_sp |>
   filter(plot_type == "seedwall") |>
   filter(dist_sw <= 60) |>
-  summarize(ABIES = sum(seedl_dens_ABIES),
-            CADE = sum(seedl_dens_CADE),
-            PILA = sum(seedl_dens_PILA),
-            PSME = sum(seedl_dens_PSME),
-            PICO = sum(seedl_dens_PICO),
-            PIPJ = sum(seedl_dens_YLWPINES))
+  summarize(across(c(seedl_dens_ABIES,seedl_dens_CADE,seedl_dens_PILA,seedl_dens_PSME,seedl_dens_PICO,seedl_dens_YLWPINES), median))
+
 
 d_spcomp$tot = rowSums(d_spcomp)
 
@@ -137,10 +186,105 @@ d_spcomp_sw = d_spcomp |>
   mutate(across(everything(), ~. / tot)) |>
   mutate(across(everything(), ~round(.*100, 1))) |>
   mutate(type = "seedwall")
+d_spcomp_sw
 
 # combine and write
 spcomp = bind_rows(d_spcomp_core, d_spcomp_sw)
+spcomp
 write_csv(spcomp, file.path(datadir, "tables/regen_species_comp.csv"))
+
+
+### Species proportions in low vs high torch plots
+# for low intensity plots
+d_spcomp =  d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         day_of_burning > 210,
+         between(fire_intens2, 0, 50),
+         plot_type %in% c("core", "delayed")) |>
+  summarize(across(c(seedl_dens_ABIES,seedl_dens_CADE,seedl_dens_PILA,seedl_dens_PSME,seedl_dens_PICO,seedl_dens_YLWPINES), median),
+            nplots = n())
+tot = d_spcomp |>
+  select(starts_with("seedl_dens_")) |>
+  mutate(tot = rowSums(across(everything()))) |>
+  pull(tot)
+
+d_spcomp_lowintens = d_spcomp |>
+  mutate(across(starts_with("seedl_dens_"), ~. / tot)) |>
+  mutate(across(starts_with("seedl_dens_"), ~round(.*100, 1))) |>
+  mutate(intensity = "low")
+d_spcomp_lowintens
+
+# for high intensity plots
+d_spcomp =  d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         day_of_burning > 210,
+         between(fire_intens2, 80, 100),
+         plot_type %in% c("core", "delayed")) |>
+  summarize(across(c(seedl_dens_ABIES,seedl_dens_CADE,seedl_dens_PILA,seedl_dens_PSME,seedl_dens_PICO,seedl_dens_YLWPINES), median),
+            nplots = n())
+tot = d_spcomp |>
+  select(starts_with("seedl_dens_")) |>
+  mutate(tot = rowSums(across(everything()))) |>
+  pull(tot)
+
+d_spcomp_lowintens = d_spcomp |>
+  mutate(across(starts_with("seedl_dens_"), ~. / tot)) |>
+  mutate(across(starts_with("seedl_dens_"), ~round(.*100, 1))) |>
+  mutate(intensity = "low")
+d_spcomp_lowintens
+
+
+### Median seedling density (and plot count) in early-burned plots
+# Core plots
+d_earlydens =  d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         day_of_burning < 210,
+         plot_type %in% c("core", "delayed")) |>
+  summarize(seedl_dens_sp = median(seedl_dens_sp),
+            nplots = n())
+d_earlydens
+
+# Seed wall plots
+d_earlydens =  d_sp |>
+  filter(plot_type == "seedwall") |>
+  filter(dist_sw <= 60,
+         day_of_burning < 210) |>
+  summarize(seedl_dens_sp = median(seedl_dens_sp))
+d_earlydens
+
+# Core plots (liberal definition)
+d_earlydens =  d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 60) & sight_line > 60),
+         day_of_burning < 210,
+         plot_type %in% c("core", "delayed")) |>
+  summarize(seedl_dens_sp = median(seedl_dens_sp),
+            nplots = n())
+d_earlydens
+
+
+### Get mean pre-fire overstory species comp across all core plots burning in Aug or later
+d_ovrspcomp =  d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         day_of_burning > 210,
+         plot_type %in% c("core", "delayed")) |>
+  summarize(across(starts_with("prefire_prop_"), mean)) |>
+  sort(decreasing = TRUE)
+d_ovrspcomp
+
+### Get max seedling density by species
+d_max_seedl_dens =  d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         plot_type %in% c("core", "delayed")) |>
+  summarize(across(starts_with("seedl_dens_"), max))
+d_max_seedl_dens
+
+
 
 
 ## write core and seed wall plots used for analysis to shapefile
@@ -269,6 +413,17 @@ dev = data.frame(species = c("All conifers - core", "Pines - core", "All conifer
 dev
 
 
+#### Look up the model-fitted seedling densities along the continuum of fire intensity
+
+inspect = scenario_preds |>
+  filter(species %in% c("All conifers", "Pines"),
+         between(fire_intens2, 24.5, 25.5) | between(fire_intens2, 94.5, 95.5),
+         predictor_foc == "fire_intens2",
+         #between(ppt, 1634, 1636),
+         type == "Interior") |>
+  select(fire_intens2, preds, ppt, species, type)
+
+
 
 #### Make a density~torching (color: ppt) figure with the data points, and fit lines for two ppt scenarios
 d_sp = prep_d_sp("ALL")
@@ -311,21 +466,29 @@ d_sps = left_join(d_sps,medians)
 
 d_fig = d_sps |>
   # Put counts back on per sq m scale
-  mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5/314, 0.5/314, seedl_dens_sp)) |>
-  mutate(cone_dens_sp = ifelse(cone_dens_sp < 0.5/314, 0.5/314, cone_dens_sp)) |>
+  mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5/314, 0.0005, seedl_dens_sp)) |> # zeros get set to 0.0005 (less than all nonzero densities), which is later relabeled as 0
+  mutate(cone_dens_sp = ifelse(cone_dens_sp < 0.5/314, 0.0005, cone_dens_sp)) |>
   mutate(cone_dens_sp_cat = ifelse(cone_dens_sp >= median_dens, "High", "Low")) |>
   mutate(cone_dens_sp_cat = factor(cone_dens_sp_cat, levels = c("Low","High"))) |>
   mutate(under_cones_new_sp = ifelse(under_cones_new_sp == "low", "Low", "High")) |>
   mutate(under_cones_new_sp = factor(under_cones_new_sp, levels = c("Low","High")))
 
-color_breaks = c(0.001, 0.01, 0.1, 1, 10, 100)
+# to report in paper, what is median seedling density for low vs high cone density
+inspect = d_fig |>
+  group_by(cone_dens_sp_cat) |>
+  summarize(seedl_dens = median(seedl_dens_sp))
+inspect
+medians # the cone densty split between low and high
+
+color_breaks = c(0.0005, 0.001, 0.01, 0.1, 1, 10, 100)
+color_labels = c("[0]", "0.001", "0.01", "0.1", "1", "10", "100")
 
 p1 = ggplot(d_fig, aes(x = cone_dens_sp_cat, y = seedl_dens_sp, color = cone_dens_sp)) +
   geom_jitter(height = 0, width = 0.15) +
-  scale_color_viridis_c(trans = "log", name = bquote(Cones~m^-2), breaks = color_breaks, labels = color_breaks, limits = c(0.001,5), oob = squish) +
+  scale_color_viridis_c(trans = "log", name = bquote(Cones~m^-2), breaks = color_breaks, labels = color_labels, oob = squish) +
   coord_trans(y = "log") +
   geom_boxplot(data = d_fig, coef = 0, outlier.shape = NA, fill = NA, width = 0.4) +
-  scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), labels = label_comma()) +
+  scale_y_continuous(breaks = c(0.0005, .001,.01,.1,1,10,100, 1000), minor_breaks = c(0.005, 0.05, 0.5, 5.0, 50, 500), labels = c("[0]", "0.001", "0.01", "0.1", "1", "10", "100", "1000")) +
   labs(x = "Plot cone density", y = bquote(Yellow~pine~seedlings~m^-2)) +
   theme_bw() +
   theme(panel.grid.major.x = element_blank())
@@ -335,7 +498,7 @@ p2 = ggplot(d_fig, aes(x = under_cones_new_sp, y = seedl_dens_sp)) +
   geom_jitter(height = 0, width = 0.15, color = "gray60") +
   coord_trans(y = "log") +
   geom_boxplot(data = d_fig, coef = 0, outlier.shape = NA, fill = NA, width = 0.4) +
-  scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), labels = label_comma()) +
+  scale_y_continuous(breaks = c(0.0005, .001,.01,.1,1,10,100, 1000), minor_breaks = c(0.005, 0.05, 0.5, 5.0, 50, 500), labels = c("[0]", "0.001", "0.01", "0.1", "1", "10", "100", "1000")) +
   labs(x = "Single-tree cone density", y = bquote(Yellow~pine~seedlings~m^-2)) +
   theme_bw() +
   theme(panel.grid.major.x = element_blank())
