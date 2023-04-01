@@ -403,6 +403,19 @@ png(file.path(datadir, "figures/main_model_fits.png"), res = 350, width = 2000, 
 p
 dev.off()
 
+# first panel only
+
+p1a = p1 +
+  theme(legend.box = "horizontal",
+        legend.position = c(0.3,0.2),
+        legend.box.background = element_rect(fill="white", color = "black", linewidth = 0.3),
+        legend.spacing.x = unit(0.0, "cm")
+  )
+p1a
+
+png(file.path(datadir, "figures/main_model_fits_torching-only.png"), res = 700, width = 2800, height = 2400)
+p1a
+dev.off()
 
 #### Make a table of deviance explained 
 
@@ -437,7 +450,7 @@ ppt_split = 1200
 scenario_preds = get_scenario_preds(m, d_mod_all_core, "fire_intens2", sp = "All conifers", percentile_exclude = percentile_exclude, interacting_predictor = "ppt", interacting_splits = ppt_split) |> mutate(type = "Interior")
 p1 = make_scenario_w_ppt_ggplot(scenario_preds, d_mod_all_core, "fire_intens2", "Torching extent (%)", ymin = NULL, ymax = NULL, interacting_splits = ppt_split, show_data = TRUE)
 
-png(file.path(datadir, "figures/fits_w_data.png"), res = 500, width = 2200, height = 2000)
+png(file.path(datadir, "figures/fits_w_data.png"), res = 700, width = 2800, height = 2400)
 p1
 dev.off()
 
@@ -489,7 +502,7 @@ p1 = ggplot(d_fig, aes(x = cone_dens_sp_cat, y = seedl_dens_sp, color = cone_den
   coord_trans(y = "log") +
   geom_boxplot(data = d_fig, coef = 0, outlier.shape = NA, fill = NA, width = 0.4) +
   scale_y_continuous(breaks = c(0.0005, .001,.01,.1,1,10,100, 1000), minor_breaks = c(0.005, 0.05, 0.5, 5.0, 50, 500), labels = c("[0]", "0.001", "0.01", "0.1", "1", "10", "100", "1000")) +
-  labs(x = "Plot cone density", y = bquote(Yellow~pine~seedlings~m^-2)) +
+  labs(x = "Plot cone\ndensity", y = bquote(Yellow~pine~seedlings~m^-2)) +
   theme_bw() +
   theme(panel.grid.major.x = element_blank())
 p1
@@ -499,13 +512,13 @@ p2 = ggplot(d_fig, aes(x = under_cones_new_sp, y = seedl_dens_sp)) +
   coord_trans(y = "log") +
   geom_boxplot(data = d_fig, coef = 0, outlier.shape = NA, fill = NA, width = 0.4) +
   scale_y_continuous(breaks = c(0.0005, .001,.01,.1,1,10,100, 1000), minor_breaks = c(0.005, 0.05, 0.5, 5.0, 50, 500), labels = c("[0]", "0.001", "0.01", "0.1", "1", "10", "100", "1000")) +
-  labs(x = "Single-tree cone density", y = bquote(Yellow~pine~seedlings~m^-2)) +
+  labs(x = "Single-tree cone\ndensity", y = bquote(Yellow~pine~seedlings~m^-2)) +
   theme_bw() +
   theme(panel.grid.major.x = element_blank())
 
 p = ggarrange(p2, p1 + rremove("ylab") + rremove("y.text"), widths = c(1,1.25))
 
-png(file.path(datadir, "figures/cone_dens_boxplots.png"), res = 500, width = 2600, height = 1600)
+png(file.path(datadir, "figures/cone_dens_boxplots.png"), res = 800, width = 3600, height = 2800)
 p
 dev.off()
 

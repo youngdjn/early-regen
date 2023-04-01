@@ -130,14 +130,15 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
   p = ggplot(d_sp_nogrn_fig, aes(x = date_of_burning, y = seedl_dens_sp)) +
     geom_hline(yintercept = 0.0173, linetype = "dashed", color="gray70") +
     #geom_hline(yintercept = 0.0005, color = "orange") +
-    geom_jitter(data = d_sp_sw, color="#A2D435", size=3, height=0, width=2, aes(shape=dist_sw_cat)) +
-    geom_jitter(size=3, height = 0, width=2, aes(color = fire_intens_cat_foc)) +
+    geom_jitter(data = d_sp_sw, color="#A2D435", size=4, height=0, width=2, aes(shape=dist_sw_cat)) +
+    geom_jitter(size=4, height = 0, width=2, aes(color = fire_intens_cat_foc)) +
     labs(shape = "Edge") +
     scale_color_manual(values = c(Torched = "black", Scorched = "#9D5B0B"), name = "Interior") +
     scale_shape_manual(values = c("Near" = 1, "Very near" = 19)) +
     facet_grid(~fire) +
     theme_bw(15) +
     theme(strip.background = element_rect(fill = "white"),
+          strip.text.x = element_text(size = 16),
           legend.position = c(0.12,.67),
           legend.background = element_blank(),
           legend.box.background = element_rect(fill="white", color = "black", linewidth = 0.3)) +
@@ -152,7 +153,7 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_blk_median, yend = core_blk_median), linewidth = 1, color = "black") +
     geom_segment(data = windows_foc,aes(x = start-2, xend = end+2, y = core_brn_median, yend = core_brn_median), linewidth = 1, color = "#9D5B0B")
 
-  png(file.path(datadir, paste0("figures/raw_data_", filename, ".png")), res = 450, width = 4500, height = 2400)
+  png(file.path(datadir, paste0("figures/raw_data_", filename, ".png")), res = 350*2, width = 4500*2, height = 2400*2)
   print(p)
   dev.off()
   
@@ -267,11 +268,11 @@ make_scenario_ggplot = function(scenario_preds, d_mod, focal_predictor, predicto
     
   p = ggplot(data = d_fig, mapping = aes(x = !!ensym(focal_predictor), y = preds, color = species, fill = species, linetype = type)) +
     scale_linetype(name = "Plot type", limits = c("Interior", "Edge")) +
-    scale_color_viridis_d(begin = .2, end = .8, name = "Species group") +
-    scale_fill_viridis_d(begin = .2, end = .8, name = "Species group") +
+    scale_color_viridis_d(begin = .2, end = .8, name = "Species") +
+    scale_fill_viridis_d(begin = .2, end = .8, name = "Species") +
     geom_ribbon(aes(ymin = preds_lwr, ymax = preds_upr, fill=species), color=NA, alpha = .3, show.legend = FALSE) +
     geom_line() +
-    geom_rug(data = d_mod, sides = "b", aes(x = !!ensym(focal_predictor), y = NULL, color = NULL, linetype = NULL), alpha = 0.2) +
+    #geom_rug(data = d_mod, sides = "b", aes(x = !!ensym(focal_predictor), y = NULL, color = NULL, linetype = NULL), alpha = 0.2) +
     scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), limits = c(ymin, ymax), labels = label_comma()) +
     coord_trans(y = "log") +
     theme_bw() +
