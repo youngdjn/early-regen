@@ -93,12 +93,13 @@ dev.off()
 # so this may exaggerate the regeneration density of core plots compared against them
 
 
-# Plot raw data. This function saves to figure files, and also returns the median scorching extent (value of d_sp$fire_intens2)
-median_scorching_extent = plot_raw_data(d_sp, axis_label = bquote(Seedlings~m^-2), plot_title = NULL, filename = "all")
-
 # Plot raw data for pinus
 d_sp = prep_d_sp("PINES")
 median_scorching_extent = plot_raw_data(d_sp, axis_label = bquote(Seedlings~m^-2), plot_title = "Pines", filename = "pines")
+
+# Plot raw data for all species (must be run before next lines). This function saves to figure files, and also returns the median scorching extent (value of d_sp$fire_intens2)
+d_sp = prep_d_sp("ALL")
+median_scorching_extent = plot_raw_data(d_sp, axis_label = bquote(Seedlings~m^-2), plot_title = NULL, filename = "all")
 
 
 #### Summary statistics to report in paper
@@ -120,7 +121,8 @@ d_sp |>
          day_of_burning > 210,
          fire_intens2 < median_scorching_extent) |>
   summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp))
+            dens_median = median(seedl_dens_sp),
+            n = n())
 
 ## Seed wall plots
 d_sp |>
@@ -128,6 +130,15 @@ d_sp |>
              filter(dist_sw <= 60) |>
   summarize(dens_mean = mean(seedl_dens_sp),
             dens_median = median(seedl_dens_sp))
+
+## Seed wall plots burning after 1 Aug
+d_sp |>
+  filter(plot_type == "seedwall") |>
+  filter(dist_sw <= 60,
+         day_of_burning >= 210) |>
+  summarize(dens_mean = mean(seedl_dens_sp),
+            dens_median = median(seedl_dens_sp),
+            nplots = n())
 
 ## Seed wall plots burning in mid-Aug
 d_sp |>
@@ -138,6 +149,31 @@ d_sp |>
   summarize(dens_mean = mean(seedl_dens_sp),
             dens_median = median(seedl_dens_sp),
             nplots = n())
+
+## Scorched core area plots burning mid-Aug
+d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         plot_type %in% c("core", "delayed"),
+         day_of_burning > 222,
+         day_of_burning <= 232,
+         fire_intens2 < median_scorching_extent) |>
+  summarize(dens_mean = mean(seedl_dens_sp),
+            dens_median = median(seedl_dens_sp),
+            nplots = n())
+
+
+## Core area plots burning mid-Aug
+d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         plot_type %in% c("core", "delayed"),
+         day_of_burning > 222,
+         day_of_burning <= 232) |>
+  summarize(dens_mean = mean(seedl_dens_sp),
+            dens_median = median(seedl_dens_sp),
+            nplots = n())
+
 
 ## Proportion of core area plots burning mid-Aug
 d_sp |>
@@ -403,7 +439,7 @@ png(file.path(datadir, "figures/main_model_fits.png"), res = 350, width = 2000, 
 p
 dev.off()
 
-# first panel only
+# torching panel only
 
 p1a = p1 +
   theme(legend.box = "horizontal",
@@ -415,6 +451,15 @@ p1a
 
 png(file.path(datadir, "figures/main_model_fits_torching-only.png"), res = 700, width = 2800, height = 2400)
 p1a
+dev.off()
+
+# ppt panel only
+
+p2a = p2
+p2a
+
+png(file.path(datadir, "figures/main_model_fits_ppt-only.png"), res = 700, width = 3600, height = 2400)
+p2a
 dev.off()
 
 #### Make a table of deviance explained 

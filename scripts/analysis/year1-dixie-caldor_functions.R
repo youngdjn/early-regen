@@ -81,10 +81,17 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
   d_fig = allplots |>
     mutate(plot_type = recode(plot_type, "core" = "Interior", "seedwall" = "Edge"))
   
-  p = ggplot(d_fig, aes(x = date_of_burning, y = ppt, color = fire, shape = plot_type)) +
+  d_fig$plot_type_w_prox = d_fig$plot_type
+  d_fig[d_fig$plot_type == "Edge" & d_fig$dist_sw_cat == "Near",]$plot_type_w_prox = "Edge near"
+  d_fig[d_fig$plot_type == "Edge" & d_fig$dist_sw_cat == "Very near",]$plot_type_w_prox = "Edge very near"
+  
+  d_fig = d_fig |>
+    mutate(plot_type_w_prox = factor(plot_type_w_prox, levels = c("Edge very near", "Edge near", "Interior")))
+  
+  p = ggplot(d_fig, aes(x = date_of_burning, y = ppt, color = fire, shape = plot_type_w_prox)) +
     geom_jitter(width = 3, size = 3) +
     theme_bw(15) +
-    scale_shape(name = "Plot type") +
+    scale_shape_manual(name = "Plot type", values = c(19, 1, 17)) +
     scale_color_viridis_d(name = "Fire", begin = 0.2, end = 0.8) +
     labs(x = "Date of burning", y = "Mean annual precipitation (mm)")
   
