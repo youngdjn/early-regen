@@ -265,12 +265,14 @@ tot = d_spcomp |>
   mutate(tot = rowSums(across(everything()))) |>
   pull(tot)
 
-d_spcomp_lowintens = d_spcomp |>
+d_spcomp_highintens = d_spcomp |>
   mutate(across(starts_with("seedl_dens_"), ~. / tot)) |>
   mutate(across(starts_with("seedl_dens_"), ~round(.*100, 1))) |>
-  mutate(intensity = "low")
-d_spcomp_lowintens
+  mutate(intensity = "high")
+d_spcomp_highintens
 
+d_spcomp_intens = bind_rows(d_spcomp_lowintens, d_spcomp_highintens)
+d_spcomp_intens
 
 ### Median seedling density (and plot count) in early-burned plots
 # Core plots
@@ -406,8 +408,8 @@ d_mod_pines_sw = prep_d_sw_mod(d_sp, max_sw_dist = 30) |>
   mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
          cone_dens_sp = cone_dens_sp * 314) |>
   mutate(species = "Pines", type = "Edge")
-m = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(fire_intens2, k = 3), data = d_mod_pines_sw, family = poisson)
-m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3), data = d_mod_pines_sw, family = poisson)
+m = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(fire_intens2, k = 3) + s(grn_vol_sp, k = 3), data = d_mod_pines_sw, family = poisson)
+m_nointens = gam(seedl_dens_sp ~ s(ppt, k = 3) + s(grn_vol_sp, k = 3), data = d_mod_pines_sw, family = poisson)
 pines_sw_intens_dev_exp = (100 *(m$null.deviance - m$deviance) / m$null.deviance) |> round(1)
 pines_sw_nointens_dev_exp = (100 *(m_nointens$null.deviance - m_nointens$deviance) / m_nointens$null.deviance) |> round(1)
 summary(m)
@@ -517,7 +519,7 @@ d_sps = bind_rows(d_ylwpines)
 medians = d_sps |>
   group_by(species) |>
   summarize(median_dens = median(cone_dens_sp))
-
+medians
 # bind this to the data so we can compute whether each obs was above or below the median
 d_sps = left_join(d_sps,medians)
 
