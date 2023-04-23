@@ -66,6 +66,7 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
     mutate(dist_sw_cat = factor(dist_sw_cat, levels = c("Very near", "Near")))
   
   median_scorching_extent = median(d_sp_nogrn$fire_intens2)
+  median_scorching_extent = 85
   cat("Median scorching extent", median_scorching_extent, "\n")
   
   # prep for figure: classify fire intens
