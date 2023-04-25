@@ -149,12 +149,13 @@ d_sp |>
 
 
 ## Seed wall plots
-d_sp |>
+a = d_sp |>
   filter(plot_type == "seedwall") |>
              filter(dist_sw <= 60) |>
   summarize(dens_mean = mean(seedl_dens_sp),
             dens_median = median(seedl_dens_sp),
             med_dist_grn = median(dist_grn_sp))
+a
 
 ## Seed wall plots burning after 1 Aug
 d_sp |>
@@ -314,6 +315,26 @@ d_spcomp_core = d_spcomp |>
   mutate(across(everything(), ~round(.*100, 1))) |>
   mutate(type = "core")
 d_spcomp_core
+
+
+
+# for *scorched* core area plots
+d_spcomp =  d_sp |>
+  filter(grn_vol_abs_sp == 0,
+         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
+         day_of_burning > 210,
+         plot_type %in% c("core", "delayed"),
+         fire_intens2 < median_scorching_extent) |>
+  summarize(across(c(seedl_dens_ABIES,seedl_dens_CADE,seedl_dens_PILA,seedl_dens_PSME,seedl_dens_PICO,seedl_dens_YLWPINES), median))
+d_spcomp$tot = rowSums(d_spcomp)
+
+d_spcomp_core = d_spcomp |>
+  mutate(across(everything(), ~. / tot)) |>
+  mutate(across(everything(), ~round(.*100, 1))) |>
+  mutate(type = "core")
+d_spcomp_core
+
+
 
 # and seed wall plots
 d_spcomp =  d_sp |>

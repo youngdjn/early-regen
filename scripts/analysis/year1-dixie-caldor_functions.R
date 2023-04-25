@@ -13,7 +13,7 @@ prep_d_sp = function(sp) {
   d_sp = d |>
     select(fire, plot_id, date, shrub_cover, shrub_ht, nongrowing_cover, capable_growing_area, litter_cover,
            litter_depth, moss_cover, branches_cover, trample, plot_type, ba_factor, ba_tally,
-           vol_grn_50m, vol_brn_50m, vol_blk_50m, sight_line, mean_tree_dbh, seedwall_density_cat,
+           vol_grn_50m, vol_brn_50m, vol_blk_50m, vol_grn_10m, sight_line, mean_tree_dbh, seedwall_density_cat,
            mean_seedwall_height, day_of_burning, sri, ppt, tmean, fire_intens, fire_intens2, fire_intens10,
            dist_sw = dist_grn_ALL, # seed wall seed sources are only ever recorded under ALL. This var is not meaningful for core area plots.
            dist_grn_sp = starts_with(dist_grn_var),
