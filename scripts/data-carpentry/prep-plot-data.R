@@ -171,7 +171,7 @@ plots = plots |>
   mutate(across(starts_with("prefire_prop_"), ~ifelse(.x == "MISSING", NA, .x))) |> # make the MISSING fields NAs
   mutate(across(starts_with("prefire_prop_"), as.numeric))         
   
-# For prfire species comp that sums to > or < 100 across species, normalize it so that it does sum to 100
+# For prefire species comp that sums to > or < 100 across species, normalize it so that it does sum to 100
 plots = plots |>
   mutate(total_prefire_prop = rowSums(across(starts_with("prefire_prop_")))) |>
   mutate(across(starts_with("prefire_prop_"), ~./(total_prefire_prop/100))) |>
@@ -305,7 +305,6 @@ seedl = seedl %>%
          cone_dens = cones_tot / (3.14*8^2))
 
 
-
 ####!!! TODO for 2021 data: 
 
 
@@ -385,7 +384,6 @@ plot_ids = unique(plots$plot_id)
 seedl_plot_ids = unique(seedl_simp$plot_id)
 plots_no_seedlings = setdiff(plot_ids, seedl_plot_ids)
 seedlings_no_plots = setdiff(seedl_plot_ids, plot_ids)
-# Looks like C22-019 had no seedling data. Check datasheet to see if it was skipped in entering
 
 
 ### TODO for 2021: Add a column for "this plot did not have seed wall cone density recorded", so we could optionally exclude those plots
@@ -430,6 +428,10 @@ seedl_wide = seedl_wide %>%
   select(-contains("cone_dens_ABCO"),
          -contains("cone_dens_FIRS"),
          -contains("cone_dens_CADE"))
+
+# Assign more meaningful names to the under-tree cone density categories (0, 1, 2) = (low, low, high)
+seedl_wide = seedl_wide |>
+  mutate(across(starts_with("under_cones_new_"), ~recode(paste0("level_", .), "level_0" = "low", "level_1" = "low", "level_2" = "high")))
 
 ## ^ with the above section, we now have cones and seedlings by species and species group!
 
@@ -670,6 +672,27 @@ plots_w_comp = plots_w_comp %>%
   mutate(across(ends_with("_green_vol"), ~.x*vol_grn_prop_50m/100, .names = "{.col}_abs")) %>%
   # Removed untorched_cov because the crew was collecting it wrong: mutate(across(ends_with("_untorched_cov"), ~.x*untorched_cover_50m/100, .names = "{.col}_abs")) %>% # removed this because scorched_cover was being collected incorrectly
   mutate(across(ends_with("_untorched_vol"), ~.x*vol_brn_prop_50m/100, .names = "{.col}_abs"))
+
+
+### Compute a few derived plot vars: BA, capable growing area, and change seedling density to density within capable growing area
+
+plots_w_comp = plots_w_comp |>
+  mutate(ba = as.numeric(ba_factor) * as.numeric(ba_tally)) |>
+  mutate(capable_growing_area = 1 - as.numeric(nongrowing_cover)/100) |>
+  mutate(across(starts_with("seedl_dens_"), ~./capable_growing_area)) |> # seedling density within the cabaple growing area
+  # scorching intensity
+  mutate(fire_intens = 100 - ((litter_cover+vol_brn_50m)/2))
+
+
+### Filter to only relevant for first-year analysis: Keep Caldor and Dixie 2022 only
+plots_w_comp = plots_w_comp |>
+  filter(fire %in% c("Caldor", "Dixie")) |>
+  # remove plots that imagery revealed to be near marginally green trees
+  filter(!(plot_id %in% c("C22-029", "C041-500", "D042-207")))
+
+
+
+
 
 
 ##### Pull in predictor data from rasters ####

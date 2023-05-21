@@ -1,4 +1,8 @@
+# Functions that support analysis in the main analysis workflow script
 
+## Take the full raw data frame with one row per plot and prepare it for analysis focused on a specific species or species group.
+# Mostly, for the species-specific questions (or species group-specific questions), prepare a series of columns ending in _sp that have the data summarized specifically for that species.
+# Also removes seed wall plots with < 20% species comp in the seed wall of the focal species, removes core area plots with < 20% pre-fire overstory species comp of the focal species, removes seed wall plots with > 20% green canopy remaining within 10m
 prep_d_sp = function(sp) {
   
   dist_grn_var = paste0("dist_grn_", sp)
@@ -14,7 +18,7 @@ prep_d_sp = function(sp) {
     select(fire, plot_id, date, shrub_cover, shrub_ht, nongrowing_cover, capable_growing_area, litter_cover,
            litter_depth, moss_cover, branches_cover, trample, plot_type, ba_factor, ba_tally,
            vol_grn_50m, vol_brn_50m, vol_blk_50m, vol_grn_10m, sight_line, mean_tree_dbh, seedwall_density_cat,
-           mean_seedwall_height, day_of_burning, sri, ppt, tmean, fire_intens, fire_intens2, fire_intens10, PINES_green_vol,
+           mean_seedwall_height, day_of_burning, sri, ppt, tmean, fire_intens, PINES_green_vol,
            dist_sw = dist_grn_ALL, # seed wall seed sources are only ever recorded under ALL. This var is not meaningful for core area plots.
            dist_grn_sp = starts_with(dist_grn_var),
            seedl_dens_sp = starts_with(seedl_dens_var),
@@ -27,10 +31,10 @@ prep_d_sp = function(sp) {
            starts_with("seedl_dens_"),
            starts_with("prefire_prop_")) |>
     filter(ifelse(plot_type == "seedwall", grn_vol_sp > 20, prefire_prop_sp > 20)) |> # the criteria for keeping the plot based on its species comp depend on whether it's a seed wall or core area plot (for seed wall use seed wall comp)
-    filter(ifelse(plot_type == "seedwall", vol_grn_10m < 20, TRUE)) |> # seed wall plots need to have < 20% pre-fire green canopy within 10 m
-    mutate(under_cones_new_sp = recode(paste0("level_", under_cones_new_sp), "level_0" = "low", "level_1" = "low", "level_2" = "high"))
-  
-  if(! sp %in% c("ABIES","ABCO", "CADE")) {
+    filter(ifelse(plot_type == "seedwall", vol_grn_10m < 20, TRUE)) # seed wall plots need to have < 20% pre-fire green canopy within 10 m
+
+  # For species that have cones, compute log cone density, setting log(0) equal to the density of half a cone in the (8 m radius) plot
+  if(! sp %in% c("ABIES", "ABCO", "CADE")) {
     d_sp = d_sp |>
       mutate(cone_dens_sp_log = log(ifelse(cone_dens_sp == 0, 0.5/(3.14*8^2), cone_dens_sp)))
   }
@@ -39,25 +43,25 @@ prep_d_sp = function(sp) {
 }
 
 
-#### Plot raw seedling density data vs day of burning
+#### Plot raw seedling density data vs day of burning scatterplot
 
 plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
   
-  # make zeros nonzero
+  # Make zeros nonzero so they can be displayed on the log scale axis
   d_sp = d_sp |>
     mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.00001, 0.0005, seedl_dens_sp))
   
   ## Turn day of burning to a date
   d_sp = d_sp |>
-    mutate(date_of_burning = ymd("2021-01-01") + day_of_burning-1) # For fires the burned in other years will need more flexible here
+    mutate(date_of_burning = ymd("2021-01-01") + day_of_burning-1) # For fires the burned in other years, will need more flexible here, at least for leap years
   
-  # core area plots, far from any green of the focal speices
+  # Get the core area plots, far from any green of the focal species
   d_sp_nogrn = d_sp |>
     filter(grn_vol_abs_sp == 0,
            ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
            plot_type %in% c("core", "delayed"))
   
-  # seed wall plots
+  # Get seed wall plots
   d_sp_sw = d_sp |>
     filter(plot_type == "seedwall") |>
     filter(dist_sw <= 60) |>
@@ -66,23 +70,19 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
     mutate(dist_sw_cat = as.factor(dist_sw_cat)) |>
     mutate(dist_sw_cat = factor(dist_sw_cat, levels = c("Very near", "Near")))
   
-  median_scorching_extent = median(d_sp_nogrn$fire_intens2)
-  median_scorching_extent = 85
-  cat("Median scorching extent", median_scorching_extent, "\n")
-  
-  # prep for figure: classify fire intens
+  # Classify fire intens
   d_sp_nogrn_fig = d_sp_nogrn |>
-    mutate(fire_intens2_cat = ifelse(fire_intens2 < median_scorching_extent, "Scorched", "Torched")) |>
-    mutate(fire_intens_cat_foc = fire_intens2_cat)
-
+    mutate(fire_intens_cat = ifelse(fire_intens < intensity_threshold, "Scorched", "Torched"))
   
-  ### Context figure: plot day of burning, precip, and plot type
+  ### Before making the main figure, use the same data to make a context figure: plot day of burning, precip, and plot type
   allplots = bind_rows(d_sp_nogrn_fig, d_sp_sw) |>
-    mutate(plot_type = recode(plot_type, "delayed" = "core")) # this may select some delayed mortality plots that behave as core plots because they're > 100 m from green.
+    mutate(plot_type = recode(plot_type, "delayed" = "core")) # this may select some delayed mortality plots that behave as core plots because they're > 100 m from green of the focal species.
   
+  # Mutate some values as we want them to be displaye in figure
   d_fig = allplots |>
     mutate(plot_type = recode(plot_type, "core" = "Interior", "seedwall" = "Edge"))
   
+  # Make a col that combines plot type and for edge, whether near or very near to edge
   d_fig$plot_type_w_prox = d_fig$plot_type
   d_fig[d_fig$plot_type == "Edge" & d_fig$dist_sw_cat == "Near",]$plot_type_w_prox = "Edge near"
   d_fig[d_fig$plot_type == "Edge" & d_fig$dist_sw_cat == "Very near",]$plot_type_w_prox = "Edge very near"
@@ -102,12 +102,12 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
   dev.off()  
   
   
-  # make a copy of the constant df defining the windows in order to store the median vals for this species
+  # Make a copy of the constant df (defined at top of main analysis script) defining the date windows, which we will use to store the median seedling density vals for this species within the different date windows
   windows_foc = windows |>
   # convert the windows day of year to date
     mutate(across(c(start,end), ~ (ymd("2021-01-01") + . - 1)))
     
-  # compute median seel density by seedwall, scorch, torch within each predefined date window
+  # compute median seedl density by seedwall, scorch, torch within each predefined date window
   for(i in 1:nrow(windows_foc)) {
     
     window = windows_foc[i,]
@@ -115,13 +115,13 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
     core_blk_foc = d_sp_nogrn_fig |>
       filter(fire == window$fire) |>
       filter(between(date_of_burning, window$start, window$end)) |>
-      filter(fire_intens_cat_foc == "Torched",)
+      filter(fire_intens_cat == "Torched",)
     core_blk_median = median(core_blk_foc$seedl_dens_sp)
     
     core_brn_foc = d_sp_nogrn_fig |>
       filter(fire == window$fire) |>
       filter(between(date_of_burning, window$start, window$end)) |>
-      filter(fire_intens_cat_foc == "Scorched")
+      filter(fire_intens_cat == "Scorched")
     core_brn_median = median(core_brn_foc$seedl_dens_sp)
     
     sw_foc = d_sp_sw |>
@@ -140,7 +140,7 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
     geom_hline(yintercept = 0.0173, linetype = "dashed", color="gray70") +
     #geom_hline(yintercept = 0.0005, color = "orange") +
     geom_jitter(data = d_sp_sw, color="#A2D435", size=4, height=0, width=2, aes(shape=dist_sw_cat)) +
-    geom_jitter(size=4, height = 0, width=2, aes(color = fire_intens_cat_foc)) +
+    geom_jitter(size=4, height = 0, width=2, aes(color = fire_intens_cat)) +
     labs(shape = "Edge") +
     scale_color_manual(values = c(Torched = "black", Scorched = "#9D5B0B"), name = "Interior") +
     scale_shape_manual(values = c("Near" = 1, "Very near" = 19)) +
@@ -166,11 +166,9 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
   print(p)
   dev.off()
   
-  return(median_scorching_extent)
-  
 }
 
-# Prep core-area data for modeling
+# Prep core-area data for modeling: filter to later-burned, no green of focal species, and no surviving trees within 100 m
 prep_d_core_mod = function(d_sp) {
   d_mod = d_sp |>
     filter(day_of_burning > 220) |>
@@ -181,12 +179,24 @@ prep_d_core_mod = function(d_sp) {
   return(d_mod)
 }
 
+
+# Prep seedwall data for modeling: filter to seed wall plots within a specified distance of seed wall
+prep_d_sw_mod = function(d_sp, max_sw_dist) {
+  
+  d_mod = d_sp |>
+    filter(plot_type == "seedwall") |>
+    filter(dist_sw <= max_sw_dist)
+  
+  return(d_mod)
+}
+
+# For a fitted model, make predictions along the axis of the variables supplied as the "predictors" parameter (separately for each), holding the remainder at their medians. Optionally, supply a predictor to interact (interacting_predictor), and supply values split it into classes (interactin_splits) (e.g. value splitting precip into high precip and low precip, to interact with fire intensity).
 get_scenario_preds = function(m, d_mod, predictors, sp, percentile_exclude, interacting_predictor = NA, interacting_splits = NA) { # interacting_predictor is for a predictor var that you want to predict multiple levels for, and interacting_levels is a vector of quantiles on which to split the predictor for separate predictions
 
   predictor_foc_preds = data.frame()
   for(predictor_foc in predictors) {
     
-    ## truncate each prediction range to exclude the upper and lower x percentile extremes of observed data for each species
+    ## truncate each prediction range to exclude the upper and lower x percentile extremes of observed data
     range = d_mod |>
       summarize(lwr = quantile(!!ensym(predictor_foc),percentile_exclude),
                 upr = quantile(!!ensym(predictor_foc), 1-percentile_exclude))
@@ -194,13 +204,13 @@ get_scenario_preds = function(m, d_mod, predictors, sp, percentile_exclude, inte
     # get fitted line for hypothetical variation along focal var (all else set to mean)
     # start with a data frame of all predictors set at their means
     newdat_predictor_foc = d_mod |>
-      select(fire_intens2, fire_intens10, ppt, capable_growing_area, prefire_prop_sp, vol_brn_50m, cone_dens_sp, cone_dens_sp_log, dist_grn_sp, dist_sw, grn_vol_sp) |>
+      select(fire_intens, ppt, prefire_prop_sp, vol_brn_50m, cone_dens_sp, cone_dens_sp_log, dist_grn_sp, dist_sw, grn_vol_sp) |>
       summarize_all(mean) |>
-      mutate(under_cones_new_sp = "high") |> # assume high density of cones under nearby trees (need to do this manually instead of mean because it's categorical)
+      mutate(under_cones_new_sp = "high") |> # for predictions, assume high density of cones under nearby trees (assuming it's included in the model) (need to do this manually instead of mean because it's categorical)
       mutate(seedwall_density_cat = "H") |>
       slice(rep(row_number(), 100)) # get 100 identical (repeated) rows
     
-    # now make the focal col a seq from the min obs to max obs
+    # now make the focal var a col with a seq from the min obs to max obs
     newdat_predictor_foc[,predictor_foc] =  seq(range$lwr, range$upr, length.out = 100)
     
     # now, replicate that for every level of the interacting predictor, if specified
@@ -217,8 +227,8 @@ get_scenario_preds = function(m, d_mod, predictors, sp, percentile_exclude, inte
       lwr_mid = median(pred_vals[pred_vals < split])
       upr_mid = median(pred_vals[pred_vals >= split])
       
-      cat("Upper torching prediction val:", upr_mid, "\n")
-      cat("Lower torching prediction val:", lwr_mid, "\n")
+      cat("Upper interacting predictor val (median):", upr_mid, "\n")
+      cat("Lower interacting predictor val (median):", lwr_mid, "\n")
       
       newdat_predictor_foc_l1 = newdat_predictor_foc |>
         mutate(across(matches(paste0("^",interacting_predictor,"$")), ~lwr_mid),
@@ -250,30 +260,14 @@ get_scenario_preds = function(m, d_mod, predictors, sp, percentile_exclude, inte
 }
 
 
-
-
-
-# Prep seedwall data for modeling
-prep_d_sw_mod = function(d_sp, max_sw_dist) {
-  
-  d_mod = d_sp |>
-    filter(plot_type == "seedwall") |>
-    filter(dist_sw <= max_sw_dist)
-    # optionally to use 10 m fire intens for seed wall: mutate(fire_intens2 = fire_intens10)
-  
-  return(d_mod)
-}
-
+# Plot GAM predictions along an axis of one predictor (i.e., torching extent)
 make_scenario_ggplot = function(scenario_preds, d_mod, focal_predictor, predictor_label, ymin, ymax) {
   
+  # Prep data frame for plotting
   d_mod = d_mod |>
-    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5, 0.5, seedl_dens_sp)) |>
     mutate(type = as.factor(type))
-    
-  
   d_fig = scenario_preds |> filter(predictor_foc == focal_predictor) |>
     mutate(type = factor(type, levels = c("Interior", "Edge")))
-    
     
   p = ggplot(data = d_fig, mapping = aes(x = !!ensym(focal_predictor), y = preds, color = species, fill = species, linetype = type)) +
     scale_linetype(name = "Plot type", limits = c("Interior", "Edge")) +
@@ -281,26 +275,26 @@ make_scenario_ggplot = function(scenario_preds, d_mod, focal_predictor, predicto
     scale_fill_viridis_d(begin = .2, end = .8, name = "Species") +
     geom_ribbon(aes(ymin = preds_lwr, ymax = preds_upr, fill=species), color=NA, alpha = .3, show.legend = FALSE) +
     geom_line() +
-    #geom_rug(data = d_mod, sides = "b", aes(x = !!ensym(focal_predictor), y = NULL, color = NULL, linetype = NULL), alpha = 0.2) +
     scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), limits = c(ymin, ymax), labels = label_comma()) +
     coord_trans(y = "log") +
     theme_bw() +
     labs(y = bquote(Seedlings~m^-2), x = predictor_label)
   
-  p
+  return(p)
 
 }
 
-
+# Plot GAM predictions along an axis of one predictor (i.e., torching extent), interacting with precip (2 levels, split as specified by 'interacting_splits')
 make_scenario_w_ppt_ggplot = function(scenario_preds, d_mod, focal_predictor, predictor_label, ymin, ymax, interacting_splits = NA, show_data = FALSE) {
-  
-  
+
+  # prep observed data points for plot
   d_mod = d_mod |> # in d_mod, seedl_dens_sp is actually count of seedlings in a 10 m radius plot (for poisson purposes)
-    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5, 0.0005*314, seedl_dens_sp) / 314) |> # get seedlings per sq m, but with zeros set to 0.0005
-    mutate(ppt_cat = ifelse(ppt >= interacting_splits, paste0(">= ", interacting_splits, " mm"), paste0("< ", interacting_splits, " mm")))
+    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5, 0.0005*314, seedl_dens_sp) / 314) |> # get seedlings per sq m, but with zeros set to 0.0005 so they fit on the log-axis (will be labeled as 0)
+    mutate(ppt_cat = ifelse(ppt >= interacting_splits, paste0("≥ ", interacting_splits, " mm"), paste0("< ", interacting_splits, " mm"))) # create a categorical version of precip, split as specified
   
+  # prep model predictions for plot
   d_fig = scenario_preds |> filter(predictor_foc == focal_predictor) |>
-    mutate(ppt_cat = ifelse(ppt >= interacting_splits, paste0(">= ", interacting_splits, " mm"), paste0("< ", interacting_splits, " mm")))
+    mutate(ppt_cat = ifelse(ppt >= interacting_splits, paste0("≥ ", interacting_splits, " mm"), paste0("< ", interacting_splits, " mm")))
   
   d_mod = d_mod |>
     mutate(ppt_cat = as.factor(ppt_cat)) |>
@@ -328,51 +322,6 @@ make_scenario_w_ppt_ggplot = function(scenario_preds, d_mod, focal_predictor, pr
           legend.box.background = element_rect(fill="white", color = "black", linewidth = 0.3)) +
     labs(y = bquote(Conifer~seedlings~m^-2), x = predictor_label)
   
-  p2
-  
-}
-
-
-
-
-
-make_scenario_w_intens_ggplot = function(scenario_preds, d_mod, focal_predictor, predictor_label, ymin, ymax, interacting_splits = NA, interacting_units = "mm", show_data = FALSE) {
-  
-  # prep the dataset that was used to fit the model (the observed dataset) for plotting. Because we will log transform, have to make zeros nonzero. Model is fitted with count of seedl per plot, so convert to density
-  d_mod = d_mod |>
-    mutate(seedl_dens_sp = ifelse(seedl_dens_sp < 0.5, 0.5, seedl_dens_sp) / 314) |>
-    mutate(cone_dens_sp = ifelse(cone_dens_sp < 0.5/314, 0.5/314, cone_dens_sp)) |>
-    mutate(intens_cat = ifelse(fire_intens2 >= interacting_splits, "Torched", "Scorched"))
-  
-  d_fig = scenario_preds |> filter(predictor_foc == "cone_dens_sp_log") |>
-    mutate(intens_cat = ifelse(fire_intens2 >= interacting_splits, "Torched", "Scorched")) |>
-    mutate(cone_dens_sp = exp(cone_dens_sp_log))
-  
-  d_mod = d_mod |>
-    mutate(intens_cat = as.factor(intens_cat)) |>
-    mutate(intens_cat = factor(intens_cat, levels = rev(levels(intens_cat)))) 
-  d_fig = d_fig |>
-    mutate(intens_cat = as.factor(intens_cat)) |>
-    mutate(intens_cat = factor(intens_cat, levels = rev(levels(intens_cat)))) 
-  
-  p = ggplot(data = d_fig, mapping = aes(x = !!ensym(focal_predictor), y = preds, color = intens_cat, fill = intens_cat))
-  
-  if(show_data) {
-    p = p + geom_point(data = d_mod, mapping = aes(y = seedl_dens_sp))
-  }
-  
-  p2 = p +
-    scale_color_viridis_d(begin = .2, end = .8, name = "Torching extent") +
-    scale_fill_viridis_d(begin = .2, end = .8, name = "Torching extent") +
-    geom_ribbon(aes(ymin = preds_lwr, ymax = preds_upr), color=NA, alpha = .3, show.legend = FALSE) +
-    geom_line() +
-    scale_y_continuous(breaks = c(.001,.01,.1,1,10,100, 1000), minor_breaks = c(0.0005,0.005, 0.05, 0.5, 5.0, 50, 500), limits = c(ymin, ymax), labels = label_comma()) +
-    coord_trans(y = "log", x = "log") +
-    theme_bw() +
-    theme(legend.background = element_blank(),
-          legend.box.background = element_rect(fill="white", color = "black", linewidth = 0.3)) +
-    labs(y = bquote(Seedlings~m^-2), x = predictor_label)
-  
-  p2
+  return(p2)
   
 }
