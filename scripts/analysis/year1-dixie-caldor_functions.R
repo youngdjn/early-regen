@@ -14,7 +14,7 @@ prep_d_sp = function(sp) {
     select(fire, plot_id, date, shrub_cover, shrub_ht, nongrowing_cover, capable_growing_area, litter_cover,
            litter_depth, moss_cover, branches_cover, trample, plot_type, ba_factor, ba_tally,
            vol_grn_50m, vol_brn_50m, vol_blk_50m, vol_grn_10m, sight_line, mean_tree_dbh, seedwall_density_cat,
-           mean_seedwall_height, day_of_burning, sri, ppt, tmean, fire_intens, fire_intens2, fire_intens10,
+           mean_seedwall_height, day_of_burning, sri, ppt, tmean, fire_intens, fire_intens2, fire_intens10, PINES_green_vol,
            dist_sw = dist_grn_ALL, # seed wall seed sources are only ever recorded under ALL. This var is not meaningful for core area plots.
            dist_grn_sp = starts_with(dist_grn_var),
            seedl_dens_sp = starts_with(seedl_dens_var),
@@ -27,6 +27,7 @@ prep_d_sp = function(sp) {
            starts_with("seedl_dens_"),
            starts_with("prefire_prop_")) |>
     filter(ifelse(plot_type == "seedwall", grn_vol_sp > 20, prefire_prop_sp > 20)) |> # the criteria for keeping the plot based on its species comp depend on whether it's a seed wall or core area plot (for seed wall use seed wall comp)
+    filter(ifelse(plot_type == "seedwall", vol_grn_10m < 20, TRUE)) |> # seed wall plots need to have < 20% pre-fire green canopy within 10 m
     mutate(under_cones_new_sp = recode(paste0("level_", under_cones_new_sp), "level_0" = "low", "level_1" = "low", "level_2" = "high"))
   
   if(! sp %in% c("ABIES","ABCO", "CADE")) {

@@ -97,357 +97,52 @@ dev.off()
 
 # Plot raw data for pinus
 d_sp = prep_d_sp("PINES")
-median_scorching_extent = plot_raw_data(d_sp, axis_label = bquote(Seedlings~m^-2), plot_title = "Pines", filename = "pines")
+median_scorching_extent = plot_raw_data(d_sp, axis_label = bquote(Pine~seedlings~m^-2), plot_title = "Pines", filename = "pines")
 
 # Plot raw data for all species (must be run before next lines). This function saves to figure files, and also returns the median scorching extent (value of d_sp$fire_intens2)
 d_sp = prep_d_sp("ALL")
-median_scorching_extent = plot_raw_data(d_sp, axis_label = bquote(Seedlings~m^-2), plot_title = NULL, filename = "all")
+median_scorching_extent = plot_raw_data(d_sp, axis_label = bquote(Conifer~seedlings~m^-2), plot_title = NULL, filename = "all")
 
 
-#### Summary statistics to report in paper
+
+#### Confirm plots meet survey criteria
 d_sp = prep_d_sp("ALL")
 
-### Overall seedling densities
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed")) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp))
-
-## Same but excluding early burn plots and highly torched plots
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed"),
-         day_of_burning > 210,
-         fire_intens2 < median_scorching_extent) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            n = n())
-
-## Same but ONLY early-burn, scorched plots, but with relaxed distance to green
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 60) & sight_line > 60),
-         plot_type %in% c("core", "delayed"),
-         day_of_burning <= 210,
-         fire_intens2 < median_scorching_extent) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            n = n())
-
-# total number of relaxed distance plots regardless of fire intens
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 60) & sight_line > 60),
-         plot_type %in% c("core", "delayed"),
-         day_of_burning <= 210) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            n = n())
-
-
-## Seed wall plots
-a = d_sp |>
+### seed wall plots
+d_sp_sw = d_sp |>
   filter(plot_type == "seedwall") |>
-             filter(dist_sw <= 60) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            med_dist_grn = median(dist_grn_sp))
-a
+  filter(dist_sw <= 60)
 
-## Seed wall plots burning after 1 Aug
-d_sp |>
-  filter(plot_type == "seedwall") |>
-  filter(dist_sw <= 60,
-         day_of_burning >= 210) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            nplots = n(),
-            med_dist_grn = median(dist_grn_sp))
+# percent green remaining within 10 m
+summary(d_sp_sw$vol_grn_10m)
+(table(d_sp_sw$vol_grn_10m))
 
-## Seed wall plots burning in mid-Aug
-d_sp |>
-  filter(plot_type == "seedwall") |>
-  filter(dist_sw <= 60,
-         day_of_burning >= 222,
-         day_of_burning <= 232) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            nplots = n(),
-            med_dist_grn = median(dist_grn_sp))
+# percent pine canopy volume in seed wall
+table(d_sp_sw$PINES_green_vol)
+inspect = d_sp_sw |> select(plot_id, PINES_green_vol, capable_growing_area)
 
-## Seed wall plots burning BEfore 1 Aug
-d_sp |>
-  filter(plot_type == "seedwall") |>
-  filter(dist_sw <= 60,
-         day_of_burning < 210) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            nplots = n(),
-            med_dist_grn = median(dist_grn_sp))
+# pine proportion
+summary(d_sp_sw$vol_grn_10m)
+(table(d_sp_sw$vol_grn_10m))
 
-## Scorched core area plots burning mid-Aug
-d_sp |>
+### core area plots
+d_sp_core = d_sp |>
   filter(grn_vol_abs_sp == 0,
          ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed"),
-         day_of_burning > 222,
-         day_of_burning <= 232,
-         fire_intens2 < median_scorching_extent) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            nplots = n())
+         plot_type %in% c("core", "delayed"))
 
+# percent pre-fire pine
+inspect = d_sp_core |> select(plot_id, PINES_green_vol, prefire_prop_PINES, capable_growing_area)
 
+# within each area, what percentage of plots had >= 10% pine?
+a = inspect |>
+  mutate(area = str_split(plot_id, fixed("-")) |> map(1)) |>
+  mutate(meets_minimum_pines = prefire_prop_PINES >= 10) |>
+  group_by(area) |>
+  summarize(prop_meets_minimum_pines = mean(meets_minimum_pines),
+            tot_plots = n(),
+            exception_plots = sum(!meets_minimum_pines))
 
-
-## Core area plots burning mid-Aug
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed"),
-         day_of_burning > 222,
-         day_of_burning <= 232) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            nplots = n())
-
-
-## Proportion of core area plots burning mid-Aug
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed"),
-         day_of_burning > 222,
-         day_of_burning <= 232) |>
-  nrow()
-
-## Total number of core area plots
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed")) |>
-  nrow()
-
-# Total number of scorched and torched core area plots
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed")) |>
-  summarize(torched = sum(fire_intens2 > median_scorching_extent),
-            scorched = sum(fire_intens2 <= median_scorching_extent))
-
-# Total number of scorched and torched seed wall plots
-d_sp |>
-  filter(plot_type == "seedwall") |>
-  filter(dist_sw <= 60) |>
-  summarize(torched = sum(fire_intens2 > median_scorching_extent),
-            scorched = sum(fire_intens2 <= median_scorching_extent),
-            tot = n())
-
-### Compare early-burned and late-burned *scorched* core plot seedling densities
-# Early burned
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 60) & sight_line > 60),
-         plot_type %in% c("core", "delayed"),
-         fire_intens2 <= median_scorching_extent,
-         day_of_burning < 210) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            nplots = n())
-
-# Late burned
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed"),
-         fire_intens2 <= median_scorching_extent,
-         day_of_burning > 210) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            nplots = n())
-
-
-
-### Compare early-burned and late-burned *torched* core plot seedling densities (using the less strict 60 m )
-# Early burned
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 60) & sight_line > 60),
-         plot_type %in% c("core", "delayed"),
-         fire_intens2 > median_scorching_extent,
-         day_of_burning < 210) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            nplots = n())
-
-# Late burned
-d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed"),
-         fire_intens2 > median_scorching_extent,
-         day_of_burning > 210) |>
-  summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp),
-            nplots = n())
-
-
-
-
-### proportions by species of seedlings
-# exclude the early burn plots, compute by median
-
-# for core area plots
-d_spcomp =  d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         day_of_burning > 210,
-         plot_type %in% c("core", "delayed")) |>
-  summarize(across(c(seedl_dens_ABIES,seedl_dens_CADE,seedl_dens_PILA,seedl_dens_PSME,seedl_dens_PICO,seedl_dens_YLWPINES), median))
-d_spcomp$tot = rowSums(d_spcomp)
-
-d_spcomp_core = d_spcomp |>
-  mutate(across(everything(), ~. / tot)) |>
-  mutate(across(everything(), ~round(.*100, 1))) |>
-  mutate(type = "core")
-d_spcomp_core
-
-
-
-# for *scorched* core area plots
-d_spcomp =  d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         day_of_burning > 210,
-         plot_type %in% c("core", "delayed"),
-         fire_intens2 < median_scorching_extent) |>
-  summarize(across(c(seedl_dens_ABIES,seedl_dens_CADE,seedl_dens_PILA,seedl_dens_PSME,seedl_dens_PICO,seedl_dens_YLWPINES), median))
-d_spcomp$tot = rowSums(d_spcomp)
-
-d_spcomp_core = d_spcomp |>
-  mutate(across(everything(), ~. / tot)) |>
-  mutate(across(everything(), ~round(.*100, 1))) |>
-  mutate(type = "core")
-d_spcomp_core
-
-
-
-# and seed wall plots
-d_spcomp =  d_sp |>
-  filter(plot_type == "seedwall") |>
-  filter(dist_sw <= 60) |>
-  summarize(across(c(seedl_dens_ABIES,seedl_dens_CADE,seedl_dens_PILA,seedl_dens_PSME,seedl_dens_PICO,seedl_dens_YLWPINES), median))
-
-
-d_spcomp$tot = rowSums(d_spcomp)
-
-d_spcomp_sw = d_spcomp |>
-  mutate(across(everything(), ~. / tot)) |>
-  mutate(across(everything(), ~round(.*100, 1))) |>
-  mutate(type = "seedwall")
-d_spcomp_sw
-
-# combine and write
-spcomp = bind_rows(d_spcomp_core, d_spcomp_sw)
-spcomp
-write_csv(spcomp, file.path(datadir, "tables/regen_species_comp.csv"))
-
-
-### Species proportions in low vs high torch plots
-# for low intensity plots
-d_spcomp =  d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         day_of_burning > 210,
-         between(fire_intens2, 0, 50),
-         plot_type %in% c("core", "delayed")) |>
-  summarize(across(c(seedl_dens_ABIES,seedl_dens_CADE,seedl_dens_PILA,seedl_dens_PSME,seedl_dens_PICO,seedl_dens_YLWPINES), median),
-            nplots = n())
-tot = d_spcomp |>
-  select(starts_with("seedl_dens_")) |>
-  mutate(tot = rowSums(across(everything()))) |>
-  pull(tot)
-
-d_spcomp_lowintens = d_spcomp |>
-  mutate(across(starts_with("seedl_dens_"), ~. / tot)) |>
-  mutate(across(starts_with("seedl_dens_"), ~round(.*100, 1))) |>
-  mutate(intensity = "low")
-d_spcomp_lowintens
-
-# for high intensity plots
-d_spcomp =  d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         day_of_burning > 210,
-         between(fire_intens2, 80, 100),
-         plot_type %in% c("core", "delayed")) |>
-  summarize(across(c(seedl_dens_ABIES,seedl_dens_CADE,seedl_dens_PILA,seedl_dens_PSME,seedl_dens_PICO,seedl_dens_YLWPINES), median),
-            nplots = n())
-tot = d_spcomp |>
-  select(starts_with("seedl_dens_")) |>
-  mutate(tot = rowSums(across(everything()))) |>
-  pull(tot)
-
-d_spcomp_highintens = d_spcomp |>
-  mutate(across(starts_with("seedl_dens_"), ~. / tot)) |>
-  mutate(across(starts_with("seedl_dens_"), ~round(.*100, 1))) |>
-  mutate(intensity = "high")
-d_spcomp_highintens
-
-d_spcomp_intens = bind_rows(d_spcomp_lowintens, d_spcomp_highintens)
-d_spcomp_intens
-
-### Median seedling density (and plot count) in early-burned plots
-# Core plots
-d_earlydens =  d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         day_of_burning < 210,
-         plot_type %in% c("core", "delayed")) |>
-  summarize(seedl_dens_sp = median(seedl_dens_sp),
-            nplots = n())
-d_earlydens
-
-# Seed wall plots
-d_earlydens =  d_sp |>
-  filter(plot_type == "seedwall") |>
-  filter(dist_sw <= 60,
-         day_of_burning < 210) |>
-  summarize(seedl_dens_sp = median(seedl_dens_sp))
-d_earlydens
-
-# Core plots (liberal definition)
-d_earlydens =  d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 60) & sight_line > 60),
-         day_of_burning < 210,
-         plot_type %in% c("core", "delayed")) |>
-  summarize(seedl_dens_sp = median(seedl_dens_sp),
-            nplots = n())
-d_earlydens
-
-
-### Get mean pre-fire overstory species comp across all core plots burning in Aug or later
-d_ovrspcomp =  d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         day_of_burning > 210,
-         plot_type %in% c("core", "delayed")) |>
-  summarize(across(starts_with("prefire_prop_"), mean)) |>
-  sort(decreasing = TRUE)
-d_ovrspcomp
-
-### Get max seedling density by species
-d_max_seedl_dens =  d_sp |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed")) |>
-  summarize(across(starts_with("seedl_dens_"), max))
-d_max_seedl_dens
 
 
 
@@ -471,6 +166,7 @@ st_write(sw_write, file.path(datadir, "intermediate-inspection/sw_allsp_v2.gpkg"
 
 
 #### Fit GAMs
+### Core
 d_sp = prep_d_sp("ALL")
 d_mod_all_core = prep_d_core_mod(d_sp) |>
   mutate(seedl_dens_sp = round(seedl_dens_sp * 314),
@@ -609,7 +305,7 @@ inspect = scenario_preds |>
          #between(ppt, 1634, 1636),
          type == "Interior") |>
   select(fire_intens2, preds, ppt, species, type)
-
+inspect
 
 
 #### Make a density~torching (color: ppt) figure with the data points, and fit lines for two ppt scenarios
