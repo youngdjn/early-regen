@@ -54,11 +54,6 @@ p
 dev.off()
 
 
-#% It shows there are few seed wall plots close to seed sources at low precip.
-# So possibly the low-precip seed wall plots underestimate regen density.
-# So where are the low-precip seed wall plots (day of burning and fire)?
-# They are most of the Dixie plots, at all three day of burning levels.
-
 # Plot seed wall plot seed source distance by day of burning and fire
 p = ggplot(d_sw, aes(x = day_of_burning, y = dist_sw, color = fire, shape = fire)) +
   geom_point(size = 3) +
@@ -72,36 +67,10 @@ png(file.path(datadir, "figures/supp_dist_dob.png"), res = 200, width = 1500, he
 p
 dev.off()  
 
-#% Some of the earliest and latest Dixie seed walls have a further distance from seed source,
-# so this may exaggerate the regeneration density of core plots compared against them
-
-
-#% Plot raw data for Pinus
-d_sp = prep_d_sp("PINES")
-plot_raw_data(d_sp, axis_label = bquote(Pine~seedlings~m^-2), plot_title = "Pines", filename = "pines")
 
 # Plot raw data for all species. This function saves to figure files.
 d_sp = prep_d_sp("ALL")
 plot_raw_data(d_sp, axis_label = bquote(Conifer~seedlings~m^-2), plot_title = NULL, filename = "all")
-
-
-
-##% Write core and seed wall plots used for analysis to shapefile, for inspection
-library(sf)
-d_spatial = left_join(d_sp, d |> select(plot_id, lat, lon))
-d_spatial = st_as_sf(d_spatial, coords = c("lon","lat"), crs = 4326)
-
-core_write = d_spatial |>
-  filter(grn_vol_abs_sp == 0,
-         ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed"))
-
-sw_write =  d_spatial |>
-  filter(plot_type == "seedwall") |>
-  filter(dist_sw <= 60)
-
-st_write(core_write, file.path(datadir, "intermediate-inspection/core_allsp_v2.gpkg"), delete_dsn = TRUE)
-st_write(sw_write, file.path(datadir, "intermediate-inspection/sw_allsp_v2.gpkg"), delete_dsn = TRUE)
 
 
 ##### Fit GAMs for predicting seedling density using fire intensity and climate
