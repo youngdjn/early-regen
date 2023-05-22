@@ -1,3 +1,5 @@
+# Make maps of the two study fires (shading: day of burning) with study plots on them
+
 library(tidyverse)
 library(here)
 library(sf)
@@ -23,16 +25,6 @@ states = ne_states(country = "united states of america", returnclass = c("sf"))
 source("scripts/analysis/year1-dixie-caldor_functions.R")
 # Load data
 d = read_csv(file.path(datadir,"field-data/processed/plot-data-prepped.csv"))
-d = d |>
-  filter(fire %in% c("Caldor", "Dixie")) |>
-  # remove a plot that imagery revealed to be near some marginally green trees
-  filter(!(plot_id %in% "C22-029")) |>
-  mutate(fire_intens =  100 - pmax(litter_cover,vol_brn_50m),
-         fire_intens2 = 100 - ((litter_cover+vol_brn_50m)/2),
-         fire_intens10 = 100 - (litter_cover + vol_brn_10m)/2) |>
-  # calc capable growing area
-  mutate(capable_growing_area = 1 - nongrowing_cover/100) |>
-  mutate(across(starts_with("seedl_dens_"), ~./capable_growing_area)) # seedling density within the cabaple growing area
 d_sp = prep_d_sp("ALL")
 d_sp_sw = d_sp |>
   filter(plot_type == "seedwall") |>
@@ -40,9 +32,7 @@ d_sp_sw = d_sp |>
 d_sp_nogrn = d_sp |>
   filter(grn_vol_abs_sp == 0,
          ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
-         plot_type %in% c("core", "delayed")) |>  # prep for figure: classify fire intens
-  mutate(fire_intens2_cat = ifelse(fire_intens2 < median(fire_intens2), "Scorched", "Torched")) |>
-  mutate(fire_intens_cat_foc = fire_intens2_cat)
+         plot_type %in% c("core", "delayed"))
 allplots = bind_rows(d_sp_nogrn, d_sp_sw) |>
   mutate(plot_type = recode(plot_type, "delayed" = "core")) |> # this may select some delayed mortality plots that behave as core plots because they're > 100 m from green.
   mutate(plot_type = recode(plot_type, "core" = "Interior", "seedwall" = "Edge"))
@@ -76,16 +66,16 @@ dob_dixie = mask(dob_dixie, perim_dixie)
 
 
 ca = ggplot() +
-  geom_sf(data = states, fill = NA, linewidth = 0.3) +
+  geom_sf(data = states, fill = NA, linewidth = 01) +
   geom_sf(data = fires, fill = "red", color = NA) +
-  theme_bw(20) +
+  theme_bw(30) +
   coord_sf(xlim=c(-125,-112),ylim=c(32,45)) +
-  scale_x_continuous(breaks = c(-124, -120, -116, -112)) +
+  scale_x_continuous(breaks = c(-124, -116)) +
   scale_y_continuous(breaks = c(32, 36, 40, 44)) +
   theme(panel.grid = element_blank())
 ca
 
-png(file.path(datadir, "figures/maps/ca.png"), res = 300, width = 1500, height = 1500)
+png(file.path(datadir, "figures/maps/ca.png"), res = 350, width = 1500, height = 1500)
 ca
 dev.off()
 
@@ -98,11 +88,16 @@ caldor = ggplot() +
   geom_sf(data = plots |> filter(fire == "Caldor"), aes(color = plot_type), size = 2) +
   scale_fill_viridis_c(na.value = NA, breaks = c(182, 196, 213, 227, 244, 258), labels = c("01-Jul", "15-Jul", "01-Aug","15-Aug", "01-Sep", "15-Sep +"), name = "Day of burning", limits = c(182,258)) +
   scale_color_manual(values = c("Interior" = "#9D5B0B","Edge" = "#A2D435"), name = "Plot type") +
-  coord_sf(crs = 4326) +
-  theme_bw()
+  coord_sf(crs = 4326, ylim = c(38.4, 39.0), xlim = c(-120.65, -119.92)) +
+  scale_y_continuous(breaks = c(38.4, 38.6, 38.8)) +
+  scale_x_continuous(breaks = c(-120.6, -120.3, -120.0)) +
+  theme_bw(15) +
+  annotation_scale(pad_x = unit(0.7,"cm"),
+                   pad_y = unit(1,"cm"), location = "tl", text_cex = 1, bar_cols = c("black", "black"),
+                   height = unit(.01,"cm"))
 caldor
 
-png(file.path(datadir, "figures/maps/caldor.png"), res = 300, width = 2400, height = 1000)
+png(file.path(datadir, "figures/maps/caldor.png"), res = 300, width = 1800, height = 1000)
 caldor
 dev.off()
 
@@ -116,11 +111,13 @@ dixie = ggplot() +
   #coord_sf(crs = 3310, ylim = c(210000, 305000), xlim = c(-140000,-55000)) +
   coord_sf(crs = 4326, ylim = c(39.87, 40.78), xlim = c(-121.6, -120.6)) +
   scale_x_continuous(breaks = c(-121.6, -121.2, -120.8)) +
+  scale_y_continuous(breaks = c(40.0, 40.4, 40.8)) +
   theme_bw(15) +
-  annotation_scale(pad_x = unit(1,"cm"),
-                   pad_y = unit(1,"cm"), location = "tr")
+  annotation_scale(pad_x = unit(0.7,"cm"),
+                   pad_y = unit(1,"cm"), location = "tr", text_cex = 1, bar_cols = c("black", "black"),
+                   height = unit(.01,"cm"))
 dixie
 
-png(file.path(datadir, "figures/maps/dixie.png"), res = 300, width = 2000, height = 1500)
+png(file.path(datadir, "figures/maps/dixie.png"), res = 300, width = 1600, height = 1000)
 dixie
 dev.off()
