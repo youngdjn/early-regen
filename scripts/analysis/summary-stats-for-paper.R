@@ -20,8 +20,10 @@ d_sp |>
          ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
          plot_type %in% c("core", "delayed")) |>
   mutate(intens_cat = ifelse(fire_intens > 85, "torched", "scorched")) |>
+  mutate(dist_grn_conservative = pmin(dist_grn_sp, sight_line, na.rm = TRUE)) |>
   summarize(dens_mean = mean(seedl_dens_sp),
             dens_median = median(seedl_dens_sp),
+            dist_median = median(dist_grn_conservative, na.rm = TRUE),
             n_torched = sum(intens_cat == "torched"),
             n_scorched = sum(intens_cat == "scorched"))
 
