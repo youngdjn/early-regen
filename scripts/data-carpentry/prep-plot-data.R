@@ -317,7 +317,7 @@ seedl = seedl %>%
 
 # Get just the columns that are relevant, and remove irrelevant rows (like immature cones)
 seedl_simp = seedl %>%
-  select(plot_id,species,seedl_dens,cone_dens,under_cones_new) %>%
+  select(plot_id,species,seedl_dens,radius,cone_dens,under_cones_new) %>%
   # remove some types of cones that are not relevant
   filter(!(species %in% c("immature PIPO or PICO (open)"))) %>% # exclude because it is not a cone that dispersed seeds.
   # We are excluding stripped cones (only one recorded) from the cone count, with the logic that this fecundity was not relevant to regen
@@ -375,7 +375,7 @@ seedl_abies = seedl_simp %>%
 
 # Get the species-specific observations: exclude ambiguous species IDs. This assumes the ambiguous species were not there. We should test the sensitivty to this assumption. For 2022 Dixie/Creek, there was only 1 plot with an ambiguous pine
 seedl_simp = seedl_simp %>%
-  filter(species %in% c("ABCO","CADE","PICO","PILA","PSME"))
+  filter(species %in% c("ABCO","CADE","PICO","PILA","PSME","PIPJ"))
 
 seedl_comb = bind_rows(seedl_simp,seedl_tot,seedl_ylwpines,seedl_pines,seedl_firs, seedl_abies)
 
@@ -395,7 +395,15 @@ seedlings_no_plots = setdiff(seedl_plot_ids, plot_ids)
 a = duplicated(paste0(seedl_comb$plot_id,seedl_comb$species))
 sum(a)
 
-seedl_wide = pivot_wider(seedl_comb, id_cols = "plot_id", names_from = c("species"), values_from=c("seedl_dens","cone_dens","under_cones_new"))
+seedl_wide = pivot_wider(seedl_comb, id_cols = "plot_id", names_from = c("species"), values_from=c("seedl_dens","radius","cone_dens","under_cones_new"))
+
+seedl_wide = seedl_wide |>
+  select(-seedl_dens_PIPJ, -cone_dens_PIPJ) # don't need these because we're using YLWPINES. But couldn't eliminate PIPJ earlier because radius is recorded specifically for PIPJ
+
+# if a column is all NAs (only happens for radii for multi-species groups I think), remove it
+
+seedl_wide = janitor::remove_empty(seedl_wide, which = "cols")
+
 
 # Species counts that are NA are zero
 seedl_wide = seedl_wide %>%
