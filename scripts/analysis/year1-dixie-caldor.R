@@ -104,13 +104,15 @@ median_scorching_extent = plot_raw_data(d_sp, axis_label = bquote(Seedlings~m^-2
 #### Summary statistics to report in paper
 d_sp = prep_d_sp("ALL")
 
-### Overall seedling densities
+### Overall seedling densities, core area
 d_sp |>
   filter(grn_vol_abs_sp == 0,
          ((is.na(dist_grn_sp) | dist_grn_sp > 100) & sight_line > 100),
          plot_type %in% c("core", "delayed")) |>
+  mutate(dist_grn_conservative = pmin(dist_grn_sp, sight_line, na.rm = TRUE)) |>
   summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp))
+            dens_median = median(seedl_dens_sp),
+            dist_median = median(dist_grn_conservative, na.rm = TRUE))
 
 ## Same but excluding early burn plots and highly torched plots
 d_sp |>
@@ -119,9 +121,14 @@ d_sp |>
          plot_type %in% c("core", "delayed"),
          day_of_burning > 210,
          fire_intens2 < median_scorching_extent) |>
+  mutate(dist_grn_conservative = pmin(dist_grn_sp, sight_line, na.rm = TRUE)) |>
   summarize(dens_mean = mean(seedl_dens_sp),
-            dens_median = median(seedl_dens_sp))
+            dens_median = median(seedl_dens_sp),
+            dist_median = median(dist_grn_conservative, na.rm = TRUE))
 
+inspect = inspect |>
+  select(dist_grn_sp, sight_line, dist_grn_conservative)
+            
 ## Seed wall plots
 d_sp |>
   filter(plot_type == "seedwall") |>
@@ -137,6 +144,7 @@ d_sp |>
          day_of_burning <= 232) |>
   summarize(dens_mean = mean(seedl_dens_sp),
             dens_median = median(seedl_dens_sp),
+            dist_green_median = median(dist_sw),
             nplots = n())
 
 ## Proportion of core area plots burning mid-Aug
