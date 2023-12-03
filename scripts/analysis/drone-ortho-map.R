@@ -49,7 +49,7 @@ supp = bind_rows(supp1, supp2)
 map = ggplot() +
   geom_spatraster_rgb(data = r, max_col_value = 120) +
   geom_sf(data = all_except_supp, color = "white", size = 3) +  
-  geom_sf(data = supp, color = "white", size = 2.5) +  
+  geom_sf(data = supp, color = "white", size = 3) +  
   geom_sf(data = sw, color = "#A3E435", size = 1.5) +
   geom_sf(data = core_scorch, color = "#9D5B0B", size = 1.5) +
   geom_sf(data = core_torch, color = "black", size = 1.5) +
@@ -61,6 +61,6 @@ map = ggplot() +
   
 map
 
-png(file.path(datadir, "figures/maps/drone-ortho.png"), res = 300, width = 2000, height = 1200)
+png(file.path(datadir, "figures/maps/drone-ortho.png"), res = 3*300, width = 3*2000, height = 3*1200)
 map
 dev.off()
