@@ -50,15 +50,18 @@ plots = plots |>
   filter(!(plot_id == "C035-511" & Year == 2023)) # remove the erroneous entry
 
 
-# Some 2023 plot IDs have a " (Px)" suffix (e.g. "C68 (P4)"). I'm not sure what this is for but it
-# seems unnecessary and doesn't have anything to do with matching plots to previous years, so remove
-# it.
-plots$plot_id = str_replace(plots$plot_id, " \\(P[0-9]\\)", "")
+
 
 
 # More typo corrections TODO: need to apply these to all tables of the data (e.g. also seedling
-# counts)
+# counts). So writing it as a function so the same changes can be applied to all tables
 plot_id_typo_correction = function(df) {
+  # Some 2023 plot IDs have a " (Px)" suffix (e.g. "C68 (P4)"). I'm not sure what this is for but it
+  # seems unnecessary and doesn't have anything to do with matching plots to previous years, so
+  # remove it.
+  df$plot_id = str_replace(df$plot_id, " \\(P[0-9]\\)", "")
+    df$plot_id = str_replace(df$plot_id, "\\(P[0-9]\\)", "")
+ 
   df = df |>
     mutate(plot_id = recode(plot_id,
                             "209-250" = "S09-250",
@@ -70,6 +73,9 @@ plot_id_typo_correction = function(df) {
                             "C013-260" = "C13-260",
                             "C11-" = "C11",
                             "S49 B" = "S49B",))
+    
+
+  
   return(df)
 }
 
@@ -432,47 +438,227 @@ seedl = read_excel(datadir("field-data/raw/dispersal-data-entry-2023.xlsx"), she
                           )) |>
   select(1:13) |> # there were some extra mostly-empty columns I think with some notes, so keep only the relevant columns
   mutate(year = as.numeric(year))
+  
+seedl = plot_id_typo_correction(seedl)
 
-## TEMPORARILY thin to 2022 data only
-seedl = seedl |>
-  filter(year == 2022)
+# Note that Derek deleted duplicated seedling count entries for plot_ids D026-565 and C035-551 from
+# the google sheet
 
-#### TEMPORARY filtering to only Caldor and Dixie from 2022
-# Get which fire the seedl are from so we can remove creek. first need to select only unique plotid-fire pairs.
-plotid_fire = plots |>
-  select(plot_id, fire) |>
-  unique() # this line would only become necessary when there are revisits in the plot dataset
+# Get seedling plot IDs that don't match to the main plot table in any given year, because they
+# indicate typos
+seedl_plot_year = paste0(seedl$plot_id, "_",  seedl$year)
+plots_plot_year = paste0(plots$plot_id, "_",  plots$Year)
+setdiff(seedl_plot_year, plots_plot_year)
+# The only plot that doesn't have a match is S07B, as expected (see above)
 
-# Pull in the fire name to the seedling data
-seedl = left_join(seedl, plotid_fire)
+# Get plot IDs from plot table that don't have an entry in the seedling table, also a search for
+# typos
+setdiff(plots_plot_year, seedl_plot_year)
+# All the missing ones are from 2021 when we didn't enter anything if there were no seedlings, plus
+# S019-558 which we'll need to find from the paper data sheet and enter, making sure it was not
+# entered as another.
 
-
-#$$$$$$$$$$$$$ Get seedling plot IDs that don't match to the main plot table
-seedl |>
-  filter(is.na(Fire)) |>
-  pull(plot_id) |>
-  unique()
-
-# Exclude Creek
-seedl = seedl |>
-  filter(fire != "Creek")
+# Make sure there are no duplicate entries in the seedling table
+seedl_check = seedl
+seedl_check$duplicated = duplicated(seedl_check)
+any(seedl_check$duplicated)
 
 
 #### Prep seedling data
-####!!!! #TODO for 2021 data: For 2021 data, we recorded seedlings (and cones?) in categories like "100+" but then entered the data as "100". For analyzing the 2021 data, set "+" seedling/cone counts (round numbers at the floor of each bin) as the midpoint of the bin?? May also need set 2022 counts similarly to avoid bias.
-####!!!! #TODO for 2021 data: When bringing in 2021 data, need to make sure that we match the observations to the correct years.
+
+# For 2021 data: For 2021 data, we recorded seedlings (and cones?) in categories like "100+" but
+# then entered the data as "100". For analyzing the 2021 data, set "+" seedling/cone counts (round
+# numbers at the floor of each bin) as the midpoint of the bin?? May also need set 2022 counts
+# similarly to avoid bias.
+
+table(seedl |> filter(year == 2021) |> pull(seedlings_0yr)) |> sort()
+seedl[which(seedl$seedlings_0yr == "300" & seedl$year == 2021), "seedlings_0yr"] = "350"
+seedl[which(seedl$seedlings_0yr == "25" & seedl$year == 2021), "seedlings_0yr"] = "38"
+seedl[which(seedl$seedlings_0yr == "50" & seedl$year == 2021), "seedlings_0yr"] = "63"
+seedl[which(seedl$seedlings_0yr == "75" & seedl$year == 2021), "seedlings_0yr"] = "88"
+seedl[which(seedl$seedlings_0yr == "100" & seedl$year == 2021), "seedlings_0yr"] = "125"
+seedl[which(seedl$seedlings_0yr == "150" & seedl$year == 2021), "seedlings_0yr"] = "175"
+seedl[which(seedl$seedlings_0yr == "200" & seedl$year == 2021), "seedlings_0yr"] = "250"
+
+table(seedl |> filter(year == 2021) |> pull(cones_new)) |> sort()
+seedl[which(seedl$cones_new == "300" & seedl$year == 2021), "cones_new"] = "350"
+seedl[which(seedl$cones_new == "50+" & seedl$year == 2021), "cones_new"] = "63"
+seedl[which(seedl$cones_new == "100" & seedl$year == 2021), "cones_new"] = "125"
+seedl[which(seedl$cones_new == "150" & seedl$year == 2021), "cones_new"] = "175"
+seedl[which(seedl$cones_new == "200" & seedl$year == 2021), "cones_new"] = "250"
+seedl[which(seedl$cones_new == "75" & seedl$year == 2021), "cones_new"] = "88"
+seedl[which(seedl$cones_new == "50" & seedl$year == 2021), "cones_new"] = "63"
+seedl[which(seedl$cones_new == "25" & seedl$year == 2021), "cones_new"] = "38"
+seedl[which(seedl$cones_new == "n/a" & seedl$year == 2021), "cones_new"] = "0"
 
 ## CAVEAT Have to assume the two instances of calling cones_new "H" was about 15 cones (for new cones within the plot)
 seedl[which(seedl$cones_new == "H"),"cones_new"] = "15"
 seedl[which(seedl$cones_old == "H"),"cones_old"] = "15"
 
-#$$$$$$$$$$$$$$$$$$$$$$$$$$ If a 'radius' or 'seedlings_0yr' entry has a "/" to indicate two radii,
-#take the first value of each
+
+# Except for Creek: For 1 yr counts, if a 'radius' or 'seedlings_0yr' entry has a "/" to indicate two radii, then it
+# means the plot had a previous radius but it was reduced because of a high number of seedlings. So
+# take the smaller value.
+
+# For 0 yr counts, if there is a slash in the radius, it means two radii were surveyed (8 and 10)
+# and count for the higher radius is the ADDITIONAL number of seedlings found by surveying that
+# radius. If there is a single number, then no additional were found. Did this because suspected we
+# would not want to survey to 10 m in Y4.
+
+# In creek, for 1-2 yr seedl, we always did 8 m radius, except apparently sometimes 8 and 10.
+# For creek, if there is no value for an 8 m radius for Y0, the 8 m count is 0 (I think but not 100%
+# sure).
+
+# For creek, seedling counts over 25 were recorded as 25+ or > 25
+
+##
+
+# Pull in the fire ID
+seedl = left_join(seedl, plots[,c("plot_id","Fire","Year")], by=join_by("plot_id" == "plot_id", "year" == "Year"))
+
+# Loop through all these records and make all these corrections
+
+# Initiate it with dummy data to get the data types we want
+split_seedl_data = data.frame(year = 1000, 
+                              plot_id = "S000",
+                              radius = "0",
+                              species = "PIPJ",
+                              seedlings_0yr = "0",
+                              seedlings_1yr = "0",
+                              seedlings_2yr = "0",
+                              stringsAsFactors = FALSE)
+
+for(i in 1:nrow(seedl)) {
+  
+  row = seedl[i,]
+  if(is.na(row$radius)) next() # if there is no radius, skip
+  radius_has_slash = str_detect(row$radius, fixed("/"))
+  if(!radius_has_slash) next() # if there is no slash, skip
+  
+  # get the radii
+  radii = str_split(row$radius, fixed("/")) |> unlist()
+  
+  # If there is an entry for 0 yr seedlings
+  if(!is.na(row$seedlings_0yr)) {
+    
+    seedlings = str_split(row$seedlings_0yr, fixed("/")) |> unlist()
+    
+    # If there are 2 seedling numbers, then match them with their respective radii (the second
+    # number is cumulative to the first)
+    if(length(seedlings) == 2) {
+      
+      seedlings[2] = as.character(as.numeric(seedlings[1]) + as.numeric(seedlings[2]))
+      
+      newdata = data.frame(year = row$year,
+                           plot_id = row$plot_id,
+                           radius = radii,
+                           species = row$species,
+                           seedlings_0yr = seedlings)
+      split_seedl_data = bind_rows(split_seedl_data, newdata)
+    } else { 
+      # if there is only one entry, it was the same count for both radii
+      newdata = data.frame(year = row$year,
+                           plot_id = row$plot_id,
+                           radius = radii,
+                           species = row$species,
+                           seedlings_0yr = seedlings)
+      split_seedl_data = bind_rows(split_seedl_data, newdata)
+    }
+  }
+  
+  # If there is an entry for 1 yr seedlings
+  if(!is.na(row$seedlings_1yr)) {
+
+    seedlings = str_split(row$seedlings_1yr, fixed("/")) |> unlist()
+
+    # If there are 2 seedling numbers, then match them with their respective radii (the second
+    # number is cumulative to the first) (this only happens on Creek)
+    if(length(seedlings) == 2) {
+
+      seedlings[2] = as.character(as.numeric(seedlings[1]) + as.numeric(seedlings[2]))
+
+      newdata = data.frame(year = row$year,
+                           plot_id = row$plot_id,
+                           radius = radii,
+                           species = row$species,
+                           seedlings_1yr = seedlings)
+      split_seedl_data = bind_rows(split_seedl_data, newdata)
+    } else { 
+      # if there is only one count entry, then the second radius is the radius that was actually surveyed
+
+      newdata = data.frame(year = row$year,
+                           plot_id = row$plot_id,
+                           radius = radii[2],
+                           species = row$species,
+                           seedlings_1yr = seedlings)
+      split_seedl_data = bind_rows(split_seedl_data, newdata)
+    }
+  }
+  
+  # If there is an entry for 2 yr seedlings
+  if(!is.na(row$seedlings_2yr)) {
+
+    seedlings = str_split(row$seedlings_2yr, fixed("/")) |> unlist()
+
+    # If there are 2 seedling numbers, then match them with their respective radii (the second
+    # number is cumulative to the first) (this only happens on Creek)
+    if(length(seedlings) == 2) {
+
+      seedlings[2] = as.character(as.numeric(seedlings[1]) + as.numeric(seedlings[2]))
+
+      newdata = data.frame(year = row$year,
+                           plot_id = row$plot_id,
+                           radius = radii,
+                           species = row$species,
+                           seedlings_2yr = seedlings)
+      split_seedl_data = bind_rows(split_seedl_data, newdata)
+    } else { 
+      # if there is only one count entry, then the second radius is the radius that was actually surveyed
+      newdata = data.frame(year = row$year,
+                           plot_id = row$plot_id,
+                           radius = radii[2],
+                           species = row$species,
+                           seedlings_2yr = seedlings)
+      split_seedl_data = bind_rows(split_seedl_data, newdata)
+    }
+  }
+}
+
+# Resume here by checking that the split_seedl_data looks good. Filter out the rows that have radius
+# slashes and see if there is a good correspondence. Then remove them from the seedl data.
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 seedl = seedl |>
   mutate(radius = str_split(radius, fixed("/")) |> map(1) |> unlist(),
          seedlings_0yr = str_split(seedlings_0yr, fixed("/")) |> map(1) |> unlist())
 
 
+
+### Need to get 1 cone per species per plot pulled out
 
 # Compute seedlings/sqm and cones/sqm, filter anomalously entered values
 seedl = seedl %>%
