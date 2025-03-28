@@ -505,6 +505,12 @@ seedl[which(seedl$cones_old == "H"),"cones_old"] = "15"
 # radius. If there is a single number, then no additional were found. Did this because suspected we
 # would not want to survey to 10 m in Y4.
 
+##!!!!!! NOTE: Confirm in the field if the higher radius ^ was the ADDITIONAL number or the
+#cumulative number. It's possible that it's cumulative for non-Creek but additional for Creek. There
+#is not contrary evidence for non-Creek, other than some plots have a radius recorded as 8/10 but a
+#single seedling count recorded, suggesting that when seedling counts are recorded as 1/1 it means
+#something different (i.e. that the second number is not cumulative).
+
 # In creek, for 1-2 yr seedl, we always did 8 m radius, except apparently sometimes 8 and 10.
 # For creek, if there is no value for an 8 m radius for Y0, the 8 m count is 0 (I think but not 100%
 # sure).
@@ -626,17 +632,23 @@ for(i in 1:nrow(seedl)) {
 
 # Resume here by checking that the split_seedl_data looks good. Filter out the rows that have radius
 # slashes and see if there is a good correspondence. Then remove them from the seedl data.
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-}
+
+# Get the rows that have radius slashes (indexes)
+radius_slash_rows_indexes = which(str_detect(seedl$radius, fixed("/")))
+radius_slash_rows = seedl[radius_slash_rows_indexes,]
+
+# Remove the rows that have radius slashes
+seedl = seedl[-which(str_detect(seedl$radius, fixed("/"))),]
+
+# Are there any duplicated entries with the same year, plot_id, radius, and species?
+duplicated_rows = split_seedl_data %>%
+  group_by(year, plot_id, radius, species) %>%
+  filter(n() > 1) %>%
+  ungroup()
+# Nope, awesome!
+
+# This is now the cleaned version of the raw data since the next step is aggregation, so save it out
+write_csv(seedl, datadir("field-data/processed/allplots/cleaned/seedlings_cones.csv"))
 
 
 
@@ -644,17 +656,6 @@ for(i in 1:nrow(seedl)) {
 
 
 
-
-
-
-
-
-
-
-
-seedl = seedl |>
-  mutate(radius = str_split(radius, fixed("/")) |> map(1) |> unlist(),
-         seedlings_0yr = str_split(seedlings_0yr, fixed("/")) |> map(1) |> unlist())
 
 
 
