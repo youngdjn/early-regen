@@ -3,7 +3,6 @@
 ##!! TODO: make sure that scorched needle volume by species is being computed correctly
 
 library(tidyverse)
-library(here)
 library(sf)
 library(readxl)
 library(exifr)
@@ -11,9 +10,9 @@ library(magrittr)
 library(terra)
 
 # The root of the data directory
-data_dir = readLines(here("data_dir.txt"), n=1)
+data_dir = readLines("data_dir.txt", n=1)
 
-source(here("scripts/convenience_functions.R"))
+source("scripts/convenience_functions.R")
 
 
 #### Load plot data and correct some entry errors ####
@@ -21,10 +20,10 @@ source(here("scripts/convenience_functions.R"))
 plots = read_excel(datadir("field-data/raw/dispersal-data-entry-2023.xlsx"),sheet="plot_main") %>%
   mutate(date = as.character(as.Date(as.numeric(date), origin = "1899-12-30"))) %>% # convert the Excel date to a proper date in YYYY-MM-DD format
   filter(! plot_id %in% c("S100-1","S100-2")) %>% # these two plots were entered twice, but with different names (one set with dash, one set without, so remove the one with)
-  filter(!(plot_id=="S027094" & entered_by == "Diego")) |> # this was entered twice by two differnt people
+  filter(!(plot_id == "S027094" & entered_by == "Diego")) |> # this was entered twice by two differnt people
   # drop plots that were not surveyed (no camrea recorded)
   filter(!is.na(camera)) # there were some rows for "unsurveyed  plots" but we can just remove them. The camera field is always blank for them so filter with that column.
-  
+
 plots[plots$plot_id == "T009" & plots$Year == 2021, "date"] = "2021-07-02" # incorrectly recorded date
 
 ## incorrectly recorded plot coordinates
@@ -46,22 +45,76 @@ plots[plots$plot_id == "S039-156/158" & plots$Year == 2023, "plot_id"] = "S039-1
 ## 2023 plot C01-266 had a date of "MISSING" (NA after date conversion) but we're assuming it was surveyed on 2023-08-21 because it is in a sequence of pltos surveyed on that date (or 2023-08-20)
 plots[plots$plot_id == "C01-266" & plots$Year == 2023, "date"] = "2023-08-21"
 
-
-#$$$$$$$$$$$$ added some conversions
-
+## 2023 plot C035-551 was entered a second time erroneously as C035-511. Remove the error.
 plots = plots |>
+  filter(!(plot_id == "C035-511" & Year == 2023)) # remove the erroneous entry
 
+
+# Some 2023 plot IDs have a " (Px)" suffix (e.g. "C68 (P4)"). I'm not sure what this is for but it
+# seems unnecessary and doesn't have anything to do with matching plots to previous years, so remove
+# it.
+plots$plot_id = str_replace(plots$plot_id, " \\(P[0-9]\\)", "")
+
+
+# More typo corrections TODO: need to apply these to all tables of the data (e.g. also seedling
+# counts)
+plot_id_typo_correction = function(df) {
+  df = df |>
     mutate(plot_id = recode(plot_id,
-
                             "209-250" = "S09-250",
-
                             "209-253" = "S09-253",
+                            "204-279" = "S04-279",
+                            "C12-08" = "C12-008",
+                            "C012-010" = "C12-010",
+                            "S014-264" = "S14-264",
+                            "C013-260" = "C13-260",
+                            "C11-" = "C11",
+                            "S49 B" = "S49B",))
+  return(df)
+}
 
-                            "204-279" = "S04-279",))
+plots = plot_id_typo_correction(plots)
+
+  
 
 
+# S07B was not surveyed in 2022 because it was close to road and on a skid trail, it was only
+# accidentally surveyed again in 2023. Remove from all years data. Note that the other data tables
+# will retain the data for this plot, but they should never be pulled in because they are not in the
+# main plot table.
+plots = plots |>
+  filter(!(plot_id == "S07B"))
 
-# TODO: use the photo coords from 2022 to get the correct coords for S039-158.
+
+# Look for any plots surveyed in 2023 that are not in the 2022 data
+plots_2023 = plots |>
+  filter(Year == 2023) |>
+  pull(plot_id)
+
+plots_2022 = plots |>
+  filter(Year == 2022) |>
+  pull(plot_id)
+
+plots_2023_not_2022 = setdiff(plots_2023, plots_2022)
+plots_2023_not_2022
+# 2022 survey did not include C72 or C062-9 but it's OK because 2021 survey did
+
+
+# Look for any plots surveyed in 2022 that are not in the 2021 data (but not for Caldor and Dixie
+# fires)
+plots_2021 = plots |>
+  filter(Year == 2021) |>
+  pull(plot_id)
+plots_2022_notCD = plots |>
+  filter(Year == 2022) |>
+  filter(Fire != "Caldor" & Fire != "Dixie") |>
+  pull(plot_id)
+plots_2022_not_2021 = setdiff(plots_2022_notCD, plots_2021)
+plots_2022_not_2021
+# Great there are none!
+
+# TODO: use the photo coords from 2022 to get the correct coords for S039-158 (need to log in to get
+# photos off of 2022 Phone C -- need to know what account that phone was using)
 
 ## NOTE that Derek manually corrected the entered data gsheet for plot D014-232 because there were two plots wtih this name. The second occurrence of this plot name was changed to D014-932
 
@@ -204,21 +257,86 @@ for(plot in plots_2023) {
   }
 }
 
-## TODO: Why was plot C035-511 only surveyed in 2023 and not 2022? Typo in data entry of plot ID?
+
+# For each plot, if it's missing coords, see if there are coords in a different year, and if so,
+# pull them in.
+
+for(i in 1:nrow(plots)) {
+
+  plot = plots[i,]
+
+  if(!is.na(plot$lat) & !is.na(plot$lon)) next() # if coords are already there, skip
+
+  # get the plot ID
+  plot_id_foc = plot$plot_id
+
+  # get the year
+  year = plot$Year
+
+  # get the coords from the other year
+  coords = plots %>%
+    filter(plot_id == plot_id_foc & Year != year) %>%
+    select(lat,lon)
+
+  if(nrow(coords) == 0) next() # no coords in other year
+  
+  if(nrow(coords) > 1) {
+    # if there are multiple rows, see if they are different and if so, take the second one but give
+    # a warning
+    if(coords$lat[1] != coords$lat[2] | coords$lon[1] != coords$lon[2]) {
+      warning(paste0("Multiple lat/lon for plot ",plot_id_foc," in different year"))
+    }
+    coords = coords[2,]
+  }
+
+  plots[i,"lat"] = coords$lat
+  plots[i,"lon"] = coords$lon
+
+}
 
 
-####!!!! Temporary! Keep only 2022 surveyed plots, Caldor and Dixie only. When we add 2021 plots (and 2022 Creek), we will need to keep in mind that some 2022 plots were resurveys of 2021 plots and have the same plot name.
-#           We will also need to make sure all the data prep steps below work properly on the full dataset
-
+# The most recent coords for a plot are the ones to be trusted. So set 2022 coords to 2023 coords,
+# and 2021 coords to 2022 coords, and 2021 coords to 2023 coords. Effecitvely, for each plot, see if
+# there are coords in a more recent plot, and if so, pull them in.
 plots = plots |>
-  filter(date > "2022-01-01") |>
-  filter(fire %in% c("Caldor", "Dixie"))
+  arrange(Year)
+for(i in 1:nrow(plots)) {
 
-# Make sure there are no duplicated plots
+  plot = plots[i,]
+
+  # get the plot ID
+  plot_id_foc = plot$plot_id
+
+  # get the year
+  year = plot$Year
+
+  # get the coords from the other more recent year(s)
+  coords = plots %>%
+    filter(plot_id == plot_id_foc & Year > year) %>%
+    select(lat, lon)
+
+  if(nrow(coords) == 0) next() # no coords in other year
+  
+  if(nrow(coords) > 1) {
+    # if there are multiple rows, see if they are different and if so, take the second one but give
+    # a warning
+    if(coords$lat[1] != coords$lat[2] | coords$lon[1] != coords$lon[2]) {
+      warning(paste0("Multiple lat/lon for plot ",plot_id_foc," in different year"))
+    }
+    coords = coords[2,]
+  }
+
+  plots[i, "lat"] = coords$lat
+  plots[i, "lon"] = coords$lon
+
+}
+
+# Make sure there are no duplicated plots within a year
 plots_duplicated = plots |>
-  mutate(duplicated = duplicated(plot_id)) |>
-  select(plot_id, duplicated)
-
+  mutate(duplicated = duplicated(paste0(plot_id, Year))) |>
+  select(plot_id, duplicated) |>
+  filter(duplicated == TRUE)
+plots_duplicated
 
 #### Prep prefire prop by species (only collected 2022). This is a series of fields that have the estimated proportion of prefire BA by species (one field per species)
 # Set it to 0 if it is NA (because NAs mean 0)
@@ -227,6 +345,10 @@ plots = plots |>
   mutate(across(starts_with("prefire_prop_"), ~ifelse(is.na(.x), "0", .x))) |> # make NAs zer0s
   mutate(across(starts_with("prefire_prop_"), ~ifelse(.x == "MISSING", NA, .x))) |> # make the MISSING fields NAs
   mutate(across(starts_with("prefire_prop_"), as.numeric))         
+
+# Make 2021 and 2023 values NA since it was not collected
+plots = plots |>
+  mutate(across(starts_with("prefire_prop_"), ~ifelse(Year != 2022, NA, .x)))
   
 # For prefire species comp that sums to > or < 100 across species, normalize it so that it does sum to 100
 plots = plots |>
