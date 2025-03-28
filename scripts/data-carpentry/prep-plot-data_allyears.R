@@ -387,8 +387,12 @@ plots = plots |>
          prefire_prop_CADE = prefire_prop_cade)
 
 
+# Remove the columns that were added as intermediate data prep steps
+plots = plots |>
+  select(-Easting, -Northing, -Elevation, -`Lateral RMS`, -time, -photo_lat, -photo_lon, -coords_from_photo, -coords_from_gps, -pre_lat, -pre_lon)
 
-
+# Save the cleaned plot data
+write_csv(plots, datadir("field-data/processed/allplots/cleaned/plots.csv"))
 
 #### Summarize data in ways useful for research questions ####
 
@@ -630,7 +634,7 @@ for(i in 1:nrow(seedl)) {
   }
 }
 
-# Resume here by checking that the split_seedl_data looks good. Filter out the rows that have radius
+# Checking that the split_seedl_data looks good. Filter out the rows that have radius
 # slashes and see if there is a good correspondence. Then remove them from the seedl data.
 
 # Get the rows that have radius slashes (indexes)
@@ -647,8 +651,95 @@ duplicated_rows = split_seedl_data %>%
   ungroup()
 # Nope, awesome!
 
+## For 2022 Creek seedlings, set zeros to NA
+
+seedl[which(seedl$year == 2022 & seedl$Fire == "Creek" & seedl$seedlings_0yr == 0), "seedlings_0yr"] = NA
+seedl[which(seedl$year == 2022 & seedl$Fire == "Creek" & seedl$seedlings_1yr == 0), "seedlings_1yr"] = NA
+
+
+
+## Make seedling data long form
+seedl_long = seedl |>
+  select(-caches, -cones_new, -cones_old, -under_cones_new, -under_cones_old, -seedwall_cones) |>
+  pivot_longer(cols = c(seedlings_0yr, seedlings_1yr, seedlings_2yr),
+               names_to = "seedling_age",
+               values_to = "seedling_count") |>
+  mutate(seedling_age = str_sub(seedling_age, 11, 11)) |>
+  # remove the dummy rows from plot ID "A"
+  filter(plot_id != "A")
+
+## Go through each Creek 2022 plot, and for each seedling age, if all counts are NA, then add a new row for 10 m radius where count is set to 0. Also if there are non-NA values for both 8 and 10, set 10 to the sum
+
+plot_ids = unique(seedl_long$plot_id)
+
+for(plot_id_foc in plot_ids) {
+
+  plot_rows = seedl_long |>
+    filter(year == "2022", Fire == "Creek", plot_id == plot_id_foc)
+  plot_rows$radius = str_replace(plot_rows$radius, fixed("Q"), "2")
+  sps = unique(plot_rows$species)
+
+  for(sp_foc in sps) {
+
+    plot_sp_rows = plot_rows[which(plot_rows$species == sp_foc),]
+
+    plot_sp_rows = plot_sp_rows |>
+      arrange(as.numeric(radius))
+
+    for(seedl_age_foc in c("0", "1")) {
+
+      plot_sp_age_rows = plot_sp_rows |>
+         filter(seedling_age == seedl_age_foc)
+
+      counts = plot_sp_age_rows$seedling_count
+
+      two_counts = !is.na(counts[1]) & !is.na(counts[2])
+
+      if(two_counts) {
+        # If the radii are 8 and 10, set 10 to the sum of 8 and 10
+        if(plot_sp_age_rows$radius[1] == 8 & plot_sp_age_rows$radius[2] == 10) {
+          message("Because of counts for 8 m and 10 m radiius for plot ", plot_id_foc, " and species ", sp_foc, " for seedling age ", seedl_age_foc, " adding the 8 m count to the 10 m count")
+
+          seedl_long[seedl_long$plot_id == plot_id_foc & seedl_long$species == sp_foc & seedl_long$seedling_age == seedl_age_foc & seedl_long$radius == 10 & seedl_long$year == 2022, "seedling_count"] = as.character(as.numeric(plot_sp_age_rows$seedling_count[1]) + as.numeric(plot_sp_age_rows$seedling_count[2]))
+
+          plot_sp_age_rows$seedling_count[2] = as.numeric(plot_sp_age_rows$seedling_count[1]) + as.numeric(plot_sp_age_rows$seedling_count[2])
+        } else {
+          message("There are counts for two radii for plot", plot_id_foc, " and species ", sp_foc, " for seedling age ", seedl_age_foc, " but they are not 8 and 10 m")
+        }
+      }
+
+      # If all counts are NA, add a new row for 10 m radius where count is set to 0
+      if(all(is.na(counts))) {
+        message("Adding a new row for plot ", plot_id_foc, " and species ", sp_foc, " for seedling age ", seedl_age_foc, " with 10 m radius and count 0")
+        new_row = data.frame(year = 2022,
+                              plot_id = plot_id_foc,
+                              species = sp_foc,
+                              radius = "10",
+                              Fire = "Creek",
+                              seedling_age = seedl_age_foc,
+                              seedling_count = "0")
+        seedl_long = bind_rows(seedl_long, new_row)
+      }
+    }
+  }
+}
+
+
+
+# Remove rows with NA seedling counts and sort
+seedl_long = seedl_long |>
+  filter(!is.na(seedling_count)) |>
+  arrange(year, Fire, plot_id, species, seedling_age, radius)
+
+
+
+
+
+
+
+
 # This is now the cleaned version of the raw data since the next step is aggregation, so save it out
-write_csv(seedl, datadir("field-data/processed/allplots/cleaned/seedlings_cones.csv"))
+write_csv(seedl_long, datadir("field-data/processed/allplots/cleaned/seedlings.csv"))
 
 
 
