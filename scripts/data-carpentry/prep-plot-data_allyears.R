@@ -424,6 +424,11 @@ write_csv(plots, datadir("field-data/processed/allplots/cleaned/plots.csv"))
 #### Load seedling data
 
 seedl = read_excel(datadir("field-data/raw/dispersal-data-entry-2023.xlsx"), sheet="seedls_cones", col_types = c("text")) %>%
+  # remove a 2021 entry for plot S1001 because it was entered a second time as S100-1, and we are
+  # retaining (and fixing the name of) that one
+  filter(!(plot_id == "S1001" & year == 2021)) %>%
+  # Same for a 2021 plot S027094 that was entered a second time as S0427094
+  filter(!(plot_id == "S027094" & year == 2021)) %>%
   # correct some plot IDs that don't match the main plot table
   mutate(plot_id = recode(plot_id,
                           "C062259" = "C062-259",
@@ -446,7 +451,7 @@ seedl = read_excel(datadir("field-data/raw/dispersal-data-entry-2023.xlsx"), she
 seedl = plot_id_typo_correction(seedl)
 
 # Note that Derek deleted duplicated seedling count entries for plot_ids D026-565 and C035-551 from
-# the google sheet
+# the google sheet. Also for 2023 plot C041-161.
 
 # Get seedling plot IDs that don't match to the main plot table in any given year, because they
 # indicate typos
@@ -462,10 +467,34 @@ setdiff(plots_plot_year, seedl_plot_year)
 # S019-558 which we'll need to find from the paper data sheet and enter, making sure it was not
 # entered as another.
 
+# 2023	C003-017	CADE	for radius 10 with seedlings_0yr of 2 appears it should have been for radius 8. Correct it.
+seedl[seedl$plot_id == "C003-017" & seedl$year == 2023 & seedl$species == "CADE" & seedl$radius == 10 & seedl$seedlings_0yr == 2, "radius"] = "8"
+
+
+
 # Make sure there are no duplicate entries in the seedling table
 seedl_check = seedl
 seedl_check$duplicated = duplicated(seedl_check)
 any(seedl_check$duplicated)
+
+# Another way to check for duplicates that has a higher false-positive rate but also a higher
+# sensitivity
+seedl_check = seedl |>
+  group_by(plot_id, year, species, radius, seedlings_0yr) |>
+  filter(n() > 1)
+  
+seedl_check = seedl |>
+  group_by(plot_id, year, species, radius, seedlings_1yr) |>
+  filter(n() > 1)
+seedl_check
+
+seedl_check = seedl |>
+  filter(!is.na(seedlings_2yr) & seedlings_2yr != "0") |>
+  group_by(plot_id, year, species, radius, seedlings_2yr) |>
+  filter(n() > 1)
+seedl_check
+
+# The only duplicates after fixing (above) are ones that had zeros, which is inconsequential.
 
 
 #### Prep seedling data
@@ -739,155 +768,53 @@ seedl_long = seedl_long |>
 
 
 # This is now the cleaned version of the raw data since the next step is aggregation, so save it out
-write_csv(seedl_long, datadir("field-data/processed/allplots/cleaned/seedlings.csv"))
+  write_csv(seedl_long, datadir("field-data/processed/allplots/cleaned/seedlings.csv"))
 
 
 
 
 
+# Clean and export the cone data
+cones = seedl %>%
+  # Remove the first row which is a dummy to force R to read the data as text
+  filter(!(plot_id == "A")) %>%
+  select(year, plot_id, species, cones_new, cones_old, under_cones_new, under_cones_old, seedwall_cones, Fire) |>
+  mutate(across(contains("cones"), ~ifelse(. == 0, NA, .))) |> # set 0 to NA so we can filter it out along with all the other NAs (observations of zero)
+  filter(!is.na(cones_new) | !is.na(cones_old) | !is.na(under_cones_new) | !is.na(under_cones_old) | !is.na(seedwall_cones)) |>
+  # A single "PI-" cone observed in plot C08-214B must be a mistake since there are already counts
+  # of PIPJ and PICO cones, so remove it
+  # There were 0 cones found for "Any" species in plot T006, so remove it because an absence is
+  # equivalent to a zero
+  filter(!(species == "ANY" & cones_new == 0)) |>
+  # A few times the crew could not distinguish between PIPJ and PICO cones, so they entered names
+  # "immature PIPO or PICO (open)", "PI-", "PIxx", "PIXX", so change all these to "PIPJ/PICO"
+  mutate(species = recode(species, "immature PIPO or PICO (open)" = "PIPJ/PICO", "PI-" = "PIPJ/PICO", "PIxx" = "PIPJ/PICO", "PIXX" = "PIPJ/PICO")) |>
+  # An "EATEN PILA" is still a PILA, so remove it and add its count to the PILA count for that plot
+  filter(!(species == "EATEN PILA"))
+
+cones[cones$year == 2021 & cones$plot_id == "C043144" & cones$species == "PILA", "seedwall_cones"] = 2 + 5 # fix the plot ID
+
+
+# Check for any duplicated entries per year, plot_id, and species
+cones_check = cones |>
+  group_by(year, plot_id, species) |>
+  filter(n() > 1)
+cones_check
+
+# Check for weird count values
+table(cones$cones_new) |> sort()
+table(cones$cones_old) |> sort()
+table(cones$under_cones_new) |> sort()
+table(cones$under_cones_old) |> sort()
+
+# This is now the cleaned version of the raw data since the next step is aggregation, so save it out
+write_csv(cones, datadir("field-data/processed/allplots/cleaned/cones.csv"))
 
 
 
-
-
-### Need to get 1 cone per species per plot pulled out
-
-# Compute seedlings/sqm and cones/sqm, filter anomalously entered values
-seedl = seedl %>%
-  mutate(radius = ifelse(radius == "n/a" | radius == "MISSING", 8, radius), # if no radius entered, the default was 8 m
-         cones_new = recode(cones_new,"50+" = "75","n/a"="0"), # 50+ was a notation from 2021, I think only used for one plot (generally when entering data, they omitted the + and any round number was assumed to represent the lower end of the density class assigned to the plot)
-         cones_old = recode(cones_old,"50+" = "75","n/a"="0"), # 50+ was a notation from 2021, I think only used for one plot
-         species = recode(species,"ANY" = "PIPJ"), # In 2021, sometimes (one plot?) they put species "ANY" and entered 0 as a record to show they surveyed the plot but found nothing. So change to an actual species so it gets processed properly (won't affect count because count is 0 whever "ANY" is used)
-         seedwall_cones = recode(seedwall_cones, "No, too steep" = "na", "MISSING" = "na")) %>% # When they didn't record data for seed wall (I think just 2021), store as NA instead of 0. First store as "na" which will get set to real NA just below
-  # Some 2022 seedl_0yr counts were recorded as 200+ and 400+. Recode as the midpoint of the categories (250 and 450).
-  mutate(seedlings_0yr = recode(seedlings_0yr, "200+" = "250", "400+" = "450")) |>
-  # no longer need this because we dealt with all the "+" properly (but confirm): mutate(across(c("seedlings_0yr", "seedlings_1yr", "caches", "cones_new", "cones_old", "seedwall_cones"), ~str_replace(., fixed("+"), ""))) |>
-  # a plot radius listed as "Q" (always from 2022) means one quadrant of the smallest plot size (4 m). So give it the radius of a circular plot with equivalent area (2 m)
-  mutate(radius = recode(radius, "Q" = "2", "q" = "2")) |>
-  mutate(under_cones_new = recode(under_cones_new, "H" = "2", "L" = "1")) |> # Change letter coding for "high" and "low" to number levels
-  mutate(under_cones_old = recode(under_cones_old, "H" = "2", "L" = "1")) |> # Change letter coding for "high" and "low" to number levels
-    # #### FOR FINDING THE NON-NUMERIC VALUES (e.g., counts ending in "+"):
-  # mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "under_cones_new"), ~ifelse(is.na(.), "0", .))) |> # set all NAs to a number so that the next step will reveal which were non-numeric (because they'll get set to NAs) # TODO: If we eventually want to ask about cones-old and caches, we need to take care of this for those columns too.
-  mutate(across(c("radius", "seedlings_0yr", "seedlings_1yr", "cones_new", "cones_old", "under_cones_new", "under_cones_old"), ~as.numeric(as.character(.)))) |> # Convert everything to numeric
-  # 2022 plot S039-158 has a psme radius of 0 (also on data sheet) Assuming it's supposed to be 10.
-  mutate(radius = ifelse(radius == .0, 10, radius)) |>
-  # Some cones from 2022 were listed as "old" but this is a mistake because it is not possible for core area cones to be old
-  # TODO for >=2nd yr analysis or if analyzing seed wall cone density where there can be older cones: need to make this more flexible to only fix core area cones from first year
-  #      This is for both plot cones and under-tree cones
-  mutate(cones_tot = ifelse(is.na(cones_new), 0, cones_new) + ifelse(is.na(cones_old), 0, cones_old)) |>
-  mutate(under_cones_tot = pmax(under_cones_new, under_cones_old, na.rm = TRUE)) |>
-  mutate(under_cones_new = under_cones_tot) |>
-  # Compute densities
-  mutate(seedl_dens = seedlings_0yr / (3.14*radius^2),
-         cone_dens = cones_tot / (3.14*8^2))
-
-
-####!!! TODO for 2021 data: 
-
-
-# Set our placeholder "na" for seedwall cones to a true NA, make numeric and compute density
-seedl[which(seedl$seedwall_cones == "na"),"seedwall_cones"] = NA
-seedl = seedl %>%
-  mutate(seedwall_cones = as.numeric(seedwall_cones),
-         seedwall_cone_dens = seedwall_cones / (3.14*8^2)) # cones were always counted in the 8 m plots
-
-
-# Get just the columns that are relevant, and remove irrelevant rows (like immature cones)
-seedl_simp = seedl %>%
-  select(plot_id,species,seedl_dens,radius,cone_dens,under_cones_new) %>%
-  # remove some types of cones that are not relevant
-  filter(!(species %in% c("immature PIPO or PICO (open)"))) %>% # exclude because it is not a cone that dispersed seeds.
-  # We are excluding stripped cones (only one recorded) from the cone count, with the logic that this fecundity was not relevant to regen
-  filter(species != "EATEN PILA") %>%
-  group_by(plot_id,species) %>%
-  mutate(dup = duplicated(plot_id, species)) |>
-  ## TODO for 2021: for processing revisit data (including 2022 revisits of Creek), here is where we will need to deal with the fact that some plots have two different counts for each species, for both radii
-  summarize(across(everything(),~sum(.x,na.rm=TRUE)))
-
-
-### Get seedling/cone tallies by species / species group  
-# Compute total seedl and cones across all species, then by species groups, and bind all by columns into a table
-
-seedl_tot = seedl_simp %>%
-  group_by(plot_id) %>%
-  dplyr::summarize(seedl_dens = sum(seedl_dens, na.rm=TRUE),
-                   cone_dens = sum(cone_dens, na.rm=TRUE),
-                   under_cones_new = max(under_cones_new, na.rm=TRUE)) %>%
-  mutate(species = "ALL")
-
-seedl_pines = seedl_simp %>%
-  filter(species %in% c("PICO","PIJE","PILA","PILA/PIPJ","PIPJ","PIPJ/PILA","PIPO","PIxx","PIXX", "PI-", "PIMO")) %>% # many of the species ambiguities were recorded in 2021 data only
-  group_by(plot_id) %>%
-  dplyr::summarize(seedl_dens = sum(seedl_dens, na.rm=TRUE),
-                   cone_dens = sum(cone_dens, na.rm=TRUE),
-                   under_cones_new = max(under_cones_new, na.rm=TRUE)) %>%
-  mutate(species = "PINES")
-  
-seedl_ylwpines = seedl_simp %>%
-  filter(species %in% c("PIJE","PIPJ","PIPO")) %>%
-  group_by(plot_id) %>%
-  dplyr::summarize(seedl_dens = sum(seedl_dens, na.rm=TRUE),
-                   cone_dens = sum(cone_dens, na.rm=TRUE),
-                   under_cones_new = max(under_cones_new, na.rm=TRUE)) %>%
-  mutate(species = "YLWPINES")
-
-# "firs" including Douagls-fir
-seedl_firs = seedl_simp %>%
-  filter(species %in% c("ABCO","ABCO/ABMA","ABCO/PSME","PSME")) %>%  # many of the species ambiguities were recorded in 2021 data only
-  group_by(plot_id) %>%
-  dplyr::summarize(seedl_dens = sum(seedl_dens, na.rm=TRUE),
-                   cone_dens = sum(cone_dens, na.rm=TRUE),
-                   under_cones_new = max(under_cones_new, na.rm=TRUE)) %>%
-  mutate(species = "FIRS")
-
-# true firs
-seedl_abies = seedl_simp %>%
-  filter(species %in% c("ABCO","ABCO/ABMA", "ABMA")) %>% ##!! NOTE this drops one occurrence of abco/psme ambiguous seedlings (2021 only)
-  group_by(plot_id) %>%
-  dplyr::summarize(seedl_dens = sum(seedl_dens, na.rm=TRUE),
-                   cone_dens = sum(cone_dens, na.rm=TRUE),
-                   under_cones_new = max(under_cones_new, na.rm=TRUE)) %>%
-  mutate(species = "ABIES")
-
-
-# Get the species-specific observations: exclude ambiguous species IDs. This assumes the ambiguous species were not there. We should test the sensitivty to this assumption. For 2022 Dixie/Creek, there was only 1 plot with an ambiguous pine
-seedl_simp = seedl_simp %>%
-  filter(species %in% c("ABCO","CADE","PICO","PILA","PSME","PIPJ"))
-
-seedl_comb = bind_rows(seedl_simp,seedl_tot,seedl_ylwpines,seedl_pines,seedl_firs, seedl_abies)
-
-## Is there seedling data for every plot?
-plot_ids = unique(plots$plot_id)
-seedl_plot_ids = unique(seedl_simp$plot_id)
-plots_no_seedlings = setdiff(plot_ids, seedl_plot_ids)
-seedlings_no_plots = setdiff(seedl_plot_ids, plot_ids)
-
-
-### TODO for 2021: Add a column for "this plot did not have seed wall cone density recorded", so we could optionally exclude those plots
-### TODO in for 2021 and Creek: If would be useful in analysis, add a column for "plot has species ambiguity", so we could optionally exclude plots that have species ambiguity, rather than assuming 0 seedlings there. This may need to indicate what type(s) of species ambiguity because for some types we would not need to exclude the plot (e.g. PIJE/PILA if analysis is of PINES).
-
-
-## Make seedling/cone table wide (a col for each species / species group)
-# first make sure identifying cols are unique
-a = duplicated(paste0(seedl_comb$plot_id,seedl_comb$species))
-sum(a)
-
-seedl_wide = pivot_wider(seedl_comb, id_cols = "plot_id", names_from = c("species"), values_from=c("seedl_dens","radius","cone_dens","under_cones_new"))
-
-seedl_wide = seedl_wide |>
-  select(-seedl_dens_PIPJ, -cone_dens_PIPJ) # don't need these because we're using YLWPINES. But couldn't eliminate PIPJ earlier because radius is recorded specifically for PIPJ
-
-# if a column is all NAs (only happens for radii for multi-species groups I think), remove it
-
-seedl_wide = janitor::remove_empty(seedl_wide, which = "cols")
-
-
-# Species counts that are NA are zero
-seedl_wide = seedl_wide %>%
-  mutate(across(everything(),~ ifelse(is.na(.x),0,.x)))
-
-
-# The code commented out here is only needed for 2021 surveys:
+# The code commented out here is only needed for 2021 surveys, and only if we wnt to use seedwall
+# cones. It will need to be adapted if we want to use it because now we are prepping the cone data
+# in a separate 'cones' table and not in the 'seedl' table as we were previously.
 #
 # ### If a plot had zero seedwall cone records (even zeros) for ALL species, then make all its seedwall cone entries for all species and species groups NA
 # ## The reason is that some plots may not have had a seedwall cone plot surveyed.
@@ -908,18 +835,6 @@ seedl_wide = seedl_wide %>%
 # TODO for 2021: The "under_cones_new" column from 2022 was similar to the "seedwall_cones" entry from 2021: possibly merge into a single column?
 
 
-# Remove cone columns for species that don't produce cones
-seedl_wide = seedl_wide %>%
-  select(-contains("cone_dens_ABCO"),
-         -contains("cone_dens_FIRS"),
-         -contains("cone_dens_CADE"))
-
-# Assign more meaningful names to the under-tree cone density categories (0, 1, 2) = (low, low, high)
-seedl_wide = seedl_wide |>
-  mutate(across(starts_with("under_cones_new_"), ~recode(paste0("level_", .), "level_0" = "low", "level_1" = "low", "level_2" = "high")))
-
-## ^ with the above section, we now have cones and seedlings by species and species group!
-
 
 
 #### Process seed sources ####
@@ -927,7 +842,7 @@ seedl_wide = seedl_wide |>
 ## Get the closest green tree overall and by species / species group (assuming there is a tree just beyond where they could see)
 ## TODO: assess sensitivity to assumption that there is a seed tree just beyond the ">" distance recorded
 
-green_seedsource = read_excel(datadir("field-data/raw/dispersal-data-entry-2022.xlsx"),sheet="green_seedsource") %>%
+green_seedsource = read_excel(datadir("field-data/raw/dispersal-data-entry-2023.xlsx"), sheet = "green_seedsource") %>%
   # correct some plot IDs that don't match the main plot table
   mutate(plot_id = recode(plot_id,
                           "C062259" = "C062-259",
