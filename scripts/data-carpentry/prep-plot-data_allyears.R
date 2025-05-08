@@ -574,6 +574,13 @@ seedl[which(seedl$cones_new == "H"),"cones_new"] = "15"
 seedl[which(seedl$cones_old == "H"),"cones_old"] = "15"
 
 
+inspect = seedl |>
+  filter(year == 2023, plot_id == "S019-556", species == "PIPJ")
+inspect
+
+which_row = which(seedl$year == 2023 & seedl$plot_id == "S019-556" & seedl$species == "PIPJ")
+
+
 # Except for Creek: For 1 yr counts, if a 'radius' or 'seedlings_0yr' entry has a "/" to indicate two radii, then it
 # means the plot had a previous radius but it was reduced because of a high number of seedlings. So
 # take the smaller value.
@@ -600,16 +607,21 @@ seedl[which(seedl$cones_old == "H"),"cones_old"] = "15"
 # Pull in the fire ID
 seedl = left_join(seedl, plots[,c("plot_id","Fire","Year")], by=join_by("plot_id" == "plot_id", "year" == "Year"))
 
+
+# Save a version of this to use for cone data prep
+seedl_table_for_cones = seedl
+
 # Loop through all these records and make all these corrections
 
 # Initiate it with dummy data to get the data types we want
 split_seedl_data = data.frame(year = 1000, 
                               plot_id = "S000",
-                              radius = "0",
                               species = "PIPJ",
+                              radius = "0",
                               seedlings_0yr = "0",
                               seedlings_1yr = "0",
                               seedlings_2yr = "0",
+                              Fire = "Camp",
                               stringsAsFactors = FALSE)
 
 for(i in 1:nrow(seedl)) {
@@ -637,7 +649,8 @@ for(i in 1:nrow(seedl)) {
                            plot_id = row$plot_id,
                            radius = radii,
                            species = row$species,
-                           seedlings_0yr = seedlings)
+                           seedlings_0yr = seedlings,
+                           Fire = row$Fire)
       split_seedl_data = bind_rows(split_seedl_data, newdata)
     } else { 
       # if there is only one entry, it was the same count for both radii
@@ -645,7 +658,8 @@ for(i in 1:nrow(seedl)) {
                            plot_id = row$plot_id,
                            radius = radii,
                            species = row$species,
-                           seedlings_0yr = seedlings)
+                           seedlings_0yr = seedlings,
+                           Fire = row$Fire)
       split_seedl_data = bind_rows(split_seedl_data, newdata)
     }
   }
@@ -665,7 +679,8 @@ for(i in 1:nrow(seedl)) {
                            plot_id = row$plot_id,
                            radius = radii,
                            species = row$species,
-                           seedlings_1yr = seedlings)
+                           seedlings_1yr = seedlings,
+                           Fire = row$Fire)
       split_seedl_data = bind_rows(split_seedl_data, newdata)
     } else { 
       # if there is only one count entry, then the second radius is the radius that was actually surveyed
@@ -674,7 +689,8 @@ for(i in 1:nrow(seedl)) {
                            plot_id = row$plot_id,
                            radius = radii[2],
                            species = row$species,
-                           seedlings_1yr = seedlings)
+                           seedlings_1yr = seedlings,
+                           Fire = row$Fire)
       split_seedl_data = bind_rows(split_seedl_data, newdata)
     }
   }
@@ -694,7 +710,8 @@ for(i in 1:nrow(seedl)) {
                            plot_id = row$plot_id,
                            radius = radii,
                            species = row$species,
-                           seedlings_2yr = seedlings)
+                           seedlings_2yr = seedlings,
+                           Fire = row$Fire)
       split_seedl_data = bind_rows(split_seedl_data, newdata)
     } else { 
       # if there is only one count entry, then the second radius is the radius that was actually surveyed
@@ -702,7 +719,8 @@ for(i in 1:nrow(seedl)) {
                            plot_id = row$plot_id,
                            radius = radii[2],
                            species = row$species,
-                           seedlings_2yr = seedlings)
+                           seedlings_2yr = seedlings,
+                           Fire = row$Fire)
       split_seedl_data = bind_rows(split_seedl_data, newdata)
     }
   }
@@ -730,9 +748,11 @@ duplicated_rows = split_seedl_data %>%
 seedl[which(seedl$year == 2022 & seedl$Fire == "Creek" & seedl$seedlings_0yr == 0), "seedlings_0yr"] = NA
 seedl[which(seedl$year == 2022 & seedl$Fire == "Creek" & seedl$seedlings_1yr == 0), "seedlings_1yr"] = NA
 
+# Add the split seedling data to the main seedling data
+seedl = bind_rows(seedl, split_seedl_data)
 
 
-## Make seedling data long form
+## Make seedling data long form (dropping cone data because we'll process that separately)
 seedl_long = seedl |>
   select(-caches, -cones_new, -cones_old, -under_cones_new, -under_cones_old, -seedwall_cones) |>
   pivot_longer(cols = c(seedlings_0yr, seedlings_1yr, seedlings_2yr),
@@ -820,7 +840,7 @@ seedl_long = seedl_long |>
 
 
 # Clean and export the cone data
-cones = seedl %>%
+cones = seedl_table_for_cones %>%
   # Remove the first row which is a dummy to force R to read the data as text
   filter(!(plot_id == "A")) %>%
   select(year, plot_id, species, cones_new, cones_old, under_cones_new, under_cones_old, seedwall_cones, Fire) |>
@@ -834,10 +854,22 @@ cones = seedl %>%
   # A few times the crew could not distinguish between PIPJ and PICO cones, so they entered names
   # "immature PIPO or PICO (open)", "PI-", "PIxx", "PIXX", so change all these to "PIPJ/PICO"
   mutate(species = recode(species, "immature PIPO or PICO (open)" = "PIPJ/PICO", "PI-" = "PIPJ/PICO", "PIxx" = "PIPJ/PICO", "PIXX" = "PIPJ/PICO")) |>
-  # An "EATEN PILA" is still a PILA, so remove it and add its count to the PILA count for that plot
+  # An "EATEN PILA" does not contribute seeds toward seedling regeneration, so remove it
   filter(!(species == "EATEN PILA"))
 
-cones[cones$year == 2021 & cones$plot_id == "C043144" & cones$species == "PILA", "seedwall_cones"] = "7" #2 + 5 # fix the plot ID
+# The new cone counts of plot C12-009 made in 2023 (for PIPJ and PSME) were intended to replace the observations of 2022
+# (which used L and H notation and needed to made continuous). So transfer those counts and set the
+# 2023 counts to zero)
+
+cones[cones$year == 2022 & cones$plot_id == "C12-009" & cones$species == "PIPJ", "cones_new"] =
+  cones[cones$year == 2023 & cones$plot_id == "C12-009" & cones$species == "PIPJ", "under_cones_new"]
+  
+cones[cones$year == 2022 & cones$plot_id == "C12-009" & cones$species == "PSME", "cones_new"] =
+  cones[cones$year == 2023 & cones$plot_id == "C12-009" & cones$species == "PSME", "under_cones_new"]
+
+cones[cones$year == 2023 & cones$plot_id == "C12-009" & cones$species == "PSME", "under_cones_new"] = NA
+cones[cones$year == 2023 & cones$plot_id == "C12-009" & cones$species == "PIPJ", "under_cones_new"] = NA
+
 
 
 # Check for any duplicated entries per year, plot_id, and species
@@ -851,6 +883,7 @@ table(cones$cones_new) |> sort()
 table(cones$cones_old) |> sort()
 table(cones$under_cones_new) |> sort()
 table(cones$under_cones_old) |> sort()
+
 
 # This is now the cleaned version of the raw data since the next step is aggregation, so save it out
 write_csv(cones, datadir("field-data/processed/allplots/cleaned/cones.csv"))
@@ -987,7 +1020,16 @@ for(plot_id_foc in plot_ids_2021) {
   sight_lines_2021 = bind_rows(sight_lines_2021, sight_lines_plot)
 }
 
-write_csv(sight_lines_2021, datadir("field-data/processed/allplots/cleaned/sight_lines_extracted_2021.csv"))
+## Join the 2021 sight lines to the main plot table and re-export
+sight_lines_2021 = sight_lines_2021 |>
+  rename(sight_line_21 = sight_line)
+plots_w_21_sightlines = left_join(plots, sight_lines_2021, by = c("plot_id" = "plot_id", "Year" = "year"))
+
+plots_w_21_sightlines = plots_w_21_sightlines |>
+  mutate(sight_line = ifelse(is.na(sight_line), sight_line_21, sight_line)) |>
+  select(-sight_line_21)
+
+write_csv(plots_w_21_sightlines, datadir("field-data/processed/allplots/cleaned/plots.csv"))
 
 
 
@@ -1002,9 +1044,13 @@ dist50green = green_seedsource |>
   filter(metric == "dist50green") |>
   select(-cluster_id, -metric, -any)
 
+# Set the few 0s in this table to NA
+dist50green = dist50green |>
+  mutate(across(pipj:`abco/abma`, ~ ifelse(as.numeric(.x) == 0, NA, .x)))
+# The coercion warning here is OK because it is only in the test, not the setting of data
 
 # Save to CSV
-write_csv(dist50green, datadir("field-data/processed/allplots/cleaned/dist_50pct_green.csv"))
+write_csv(dist50green, datadir("field-data/processed/allplots/cleaned/dist_50pct25pct_green.csv"))
 
 # Now create the main table of distance to >5% green
 dist_grn = green_seedsource %>%
@@ -1206,4 +1252,4 @@ sp_comp2 = sp_comp |>
 
 
 # Save out
-write_csv(sp_comp2, datadir("field-data/processed/allplots/cleaned/plots_w_comp.csv"))
+write_csv(sp_comp2, datadir("field-data/processed/allplots/cleaned/overstory_comp.csv"))
