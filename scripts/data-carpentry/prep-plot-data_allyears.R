@@ -125,6 +125,8 @@ plots_2022_not_2021
 
 ## NOTE that Derek manually corrected the entered data gsheet for plot D014-232 because there were two plots wtih this name. The second occurrence of this plot name was changed to D014-932
 
+## NOTE that Derek manually updated the entered data gsheet coords for 2022 plot S039-158 because it duplicated the coords of plot S039-156. The correct (?) coords were pulled from the avenza point for that plot
+
 #### Load plot coords ####
 
 #### First from Emlid for 2021 plots
