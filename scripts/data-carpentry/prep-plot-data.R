@@ -198,7 +198,7 @@ for(plot in plots_2023) {
 
 plots = plots |>
   filter(date > "2022-01-01") |>
-  filter(fire %in% c("Caldor", "Dixie"))
+  filter(Fire %in% c("Caldor", "Dixie"))
 
 # Make sure there are no duplicated plots
 plots_duplicated = plots |>
@@ -245,6 +245,9 @@ plots = plots |>
          prefire_prop_CADE = prefire_prop_cade)
 
 
+# TEMPORARY: keep 2022 survey data only
+plots = plots |>
+  filter(Year == 2022)
 
 
 
@@ -299,7 +302,7 @@ seedl = seedl |>
 #### TEMPORARY filtering to only Caldor and Dixie from 2022
 # Get which fire the seedl are from so we can remove creek. first need to select only unique plotid-fire pairs.
 plotid_fire = plots |>
-  select(plot_id, fire) |>
+  select(plot_id, Fire) |>
   unique() # this line would only become necessary when there are revisits in the plot dataset
 
 # Pull in the fire name to the seedling data
@@ -307,7 +310,7 @@ seedl = left_join(seedl, plotid_fire)
 
 # Exclude Creek
 seedl = seedl |>
-  filter(fire != "Creek")
+  filter(Fire != "Creek")
 
 
 #### Prep seedling data
@@ -512,8 +515,8 @@ green_seedsource = green_seedsource |>
 
 green_seedsource = left_join(green_seedsource, plotid_fire)
 green_seedsource = green_seedsource |>
-  filter(fire %in% c("Caldor", "Dixie")) |>
-  select(-fire)
+  filter(Fire %in% c("Caldor", "Dixie")) |>
+  select(-Fire)
 
 ## Any duplicated? If so, need to fix because probably means incorrectly entered.
 inspect = green_seedsource |>
@@ -732,12 +735,12 @@ plots_w_comp = plots_w_comp |>
   mutate(capable_growing_area = 1 - as.numeric(nongrowing_cover)/100) |>
   mutate(across(starts_with("seedl_dens_"), ~./capable_growing_area)) |> # seedling density within the cabaple growing area
   # scorching intensity
-  mutate(fire_intens = 100 - ((litter_cover+vol_brn_50m)/2))
+  mutate(fire_intens = 100 - ((as.numeric(litter_cover)+vol_brn_50m)/2))
 
 
 ### Filter to only relevant for first-year analysis: Keep Caldor and Dixie 2022 only
 plots_w_comp = plots_w_comp |>
-  filter(fire %in% c("Caldor", "Dixie")) |>
+  filter(Fire %in% c("Caldor", "Dixie")) |>
   # remove plots that imagery revealed to be near marginally green trees
   filter(!(plot_id %in% c("C22-029", "C041-500", "D042-207")))
 
@@ -765,9 +768,9 @@ plots_sp$sri = sri_extract
 
 
 
-#### Pull in temp and precip
-ppt = vrt(list.files(datadir("prism/ppt-normal/"), pattern="bil$", full.names=TRUE))
-tmean = vrt(list.files(datadir("prism/tmean-normal//"), pattern="bil$", full.names=TRUE))
+#### Pull in temp and precip (800 m normals)
+ppt = vrt(list.files(datadir("prism/ppt-normal-800m/"), pattern="bil$", full.names=TRUE))
+tmean = vrt(list.files(datadir("prism/tmean-normal-800m//"), pattern="bil$", full.names=TRUE))
 ppt_extract = extract(ppt, plots_sp |> st_transform(st_crs(ppt)), method = "bilinear")[,2]
 tmean_extract = extract(tmean, plots_sp |> st_transform(st_crs(tmean)), method = "bilinear")[,2]
 plots_w_comp$ppt = ppt_extract
@@ -776,9 +779,26 @@ plots_sp$ppt = ppt_extract
 plots_sp$tmean = tmean_extract
 
 
+#### Now get ppt and tmean for the water year 2021-Oct to 2022-Sept at 4km res
+ppt_wy2022_4km = rast(datadir("prism/ppt-wy2022-4km/summed_wy_2022/ppt-2021-2022-water-year-4km.tif"))
+tmean_wy2022_4km = rast(datadir("prism/tmean-wy2022-4km/summed_wy_2022/tmean-2021-2022-water-year-4km.tif"))
+plots_w_comp$ppt_wy2022_4km = extract(ppt_wy2022_4km, plots_sp |> st_transform(st_crs(ppt_wy2022_4km)), method = "bilinear")[,2]
+plots_w_comp$tmean_wy2022_4km = extract(tmean_wy2022_4km, plots_sp |> st_transform(st_crs(tmean_wy2022_4km)), method = "bilinear")[,2]
+plots_sp$ppt_wy2022_4km = plots_w_comp$ppt_wy2022_4km
+plots_sp$tmean_wy2022_4km = plots_w_comp$tmean_wy2022_4km
 
-write_csv(plots_w_comp, datadir("field-data/processed/plot-data-prepped.csv"))
-st_write(plots_sp |> select(1:3, 24, 27:37, starts_with("seedl_dens"), contains("untorched_vol_abs"), "ppt", "day_of_burning", "dist_grn_ALL"), datadir("field-data/processed/early-regen-2022.gpkg"), delete_dsn = TRUE)
+
+#### Now get ppt and tmean norm (4km)
+ppt_norm_4km = rast(datadir("prism/ppt-normal-4km/PRISM_ppt_30yr_normal_4kmM4_annual_bil.bil"))
+tmean_norm_4km = rast(datadir("prism/tmean-normal-4km/PRISM_tmean_30yr_normal_4kmM5_annual_bil.bil"))
+plots_w_comp$ppt_norm_4km = extract(ppt_norm_4km, plots_sp |> st_transform(st_crs(ppt_norm_4km)), method = "bilinear")[,2]
+plots_w_comp$tmean_norm_4km = extract(tmean_norm_4km, plots_sp |> st_transform(st_crs(tmean_norm_4km)), method = "bilinear")[,2]
+plots_sp$ppt_norm_4km = plots_w_comp$ppt_norm_4km
+plots_sp$tmean_norm_4km = plots_w_comp$tmean_norm_4km
+
+#### Save the processed plot data
+write_csv(plots_w_comp, datadir("field-data/processed/plot-data-prepped_v2.csv"))
+st_write(plots_sp |> select(1:3, 24, 27:37, starts_with("seedl_dens"), contains("untorched_vol_abs"), "ppt", "day_of_burning", "dist_grn_ALL"), datadir("field-data/processed/early-regen-2022_v2.gpkg"), delete_dsn = TRUE)
 
 
 ## Save a version with plot_id only, for e.g. sending to managers
