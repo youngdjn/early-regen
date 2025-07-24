@@ -24,7 +24,9 @@ states = ne_states(country = "united states of america", returnclass = c("sf"))
 ### Load field plots and thin to the ones used for analysis. NOTE: this repeats code in plot_raw_data() so potentially move that to a separate function to re-use
 source("scripts/analysis/year1-dixie-caldor_functions.R")
 # Load data
-d = read_csv(file.path(datadir,"field-data/processed/plot-data-prepped.csv"))
+d = read_csv(file.path(datadir,"field-data/processed/plot-data-prepped_v2.csv"))
+d = d |>
+  rename(fire = "Fire")
 d_sp = prep_d_sp("ALL")
 d_sp_sw = d_sp |>
   filter(plot_type == "seedwall") |>
@@ -37,7 +39,7 @@ allplots = bind_rows(d_sp_nogrn, d_sp_sw) |>
   mutate(plot_type = recode(plot_type, "delayed" = "core")) |> # this may select some delayed mortality plots that behave as core plots because they're > 100 m from green.
   mutate(plot_type = recode(plot_type, "core" = "Interior", "seedwall" = "Edge"))
 ## Get coords for these plots
-plots_spatial = st_read(file.path(datadir, "field-data/processed/early-regen-2022.gpkg")) |> select(plot_id)
+plots_spatial = st_read(file.path(datadir, "field-data/processed/early-regen-2022_v2.gpkg")) |> select(plot_id)
 plots = left_join(allplots, plots_spatial, by = "plot_id") |> st_sf()
 
 
@@ -84,7 +86,7 @@ dob_caldor[dob_caldor > 258] = 258 # there is an area we didn't sample that burn
 caldor = ggplot() +
   geom_spatraster(data = dob_caldor) +
   geom_sf(data = fires |> filter(name == "Caldor"), fill = "NA", color = "red", linewidth = 0.5) +
-  geom_sf(data = plots |> filter(fire == "Caldor"), aes(color = plot_type), color = "white", size = 2.5) +
+  geom_sf(data = plots |> filter(fire == "Caldor"), aes(color = plot_type), color = "white", size = 3.5) +
   geom_sf(data = plots |> filter(fire == "Caldor"), aes(color = plot_type), size = 2) +
   scale_fill_viridis_c(na.value = NA, breaks = c(182, 196, 213, 227, 244, 258), labels = c("01-Jul", "15-Jul", "01-Aug","15-Aug", "01-Sep", "15-Sep +"), name = "Day of burning", limits = c(182,258)) +
   scale_color_manual(values = c("Interior" = "#9D5B0B","Edge" = "#A2D435"), name = "Plot type") +
@@ -104,7 +106,7 @@ dev.off()
 dixie = ggplot() +
   geom_spatraster(data = dob_dixie) +
   geom_sf(data = fires |> filter(name == "Dixie"), fill = "NA", color = "red", linewidth = 0.5) +
-  geom_sf(data = plots |> filter(fire == "Dixie"), aes(color = plot_type), color = "white", size = 2.5) +
+  geom_sf(data = plots |> filter(fire == "Dixie"), aes(color = plot_type), color = "white", size = 3.5) +
   geom_sf(data = plots |> filter(fire == "Dixie"), aes(color = plot_type), size = 2) +
   scale_fill_viridis_c(na.value = NA, breaks = c(182, 196, 213, 227, 244, 258), labels = c("01-Jul", "15-Jul", "01-Aug","15-Aug", "01-Sep", "15-Sep +"), name = "Day of burning", limits = c(182,258)) +
   scale_color_manual(values = c("Interior" = "#9D5B0B","Edge" = "#A2D435"), name = "Plot type") +

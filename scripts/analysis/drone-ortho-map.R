@@ -48,11 +48,11 @@ supp = bind_rows(supp1, supp2)
 
 map = ggplot() +
   geom_spatraster_rgb(data = r, max_col_value = 120) +
-  geom_sf(data = all_except_supp, color = "white", size = 3) +  
-  geom_sf(data = supp, color = "white", size = 3) +  
-  geom_sf(data = sw, color = "#A3E435", size = 1.5) +
-  geom_sf(data = core_scorch, color = "#9D5B0B", size = 1.5) +
-  geom_sf(data = core_torch, color = "black", size = 1.5) +
+  geom_sf(data = all_except_supp, color = "white", size = 6) +  
+  geom_sf(data = supp, color = "white", size = 5) +  
+  geom_sf(data = sw, color = "#A3E435", size = 3) +
+  geom_sf(data = core_scorch, color = "#9D5B0B", size = 3) +
+  geom_sf(data = core_torch, color = "black", size = 3) +
   theme_void() +
   annotation_scale(pad_x = unit(.8,"cm"),
                    pad_y = unit(1,"cm"), location = "tl",
