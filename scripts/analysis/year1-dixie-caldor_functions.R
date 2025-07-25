@@ -137,7 +137,7 @@ plot_raw_data = function(d_sp, axis_label, plot_title, filename) {
   
   # Make fig
   p = ggplot(d_sp_nogrn_fig, aes(x = date_of_burning, y = seedl_dens_sp)) +
-    geom_hline(yintercept = 0.0173, linetype = "dashed", color="gray70") +
+    geom_hline(yintercept = 0.0175, linetype = "dashed", color="gray70") +
     #geom_hline(yintercept = 0.0005, color = "orange") +
     geom_jitter(data = d_sp_sw, color="#A2D435", size=4, height=0, width=2, aes(shape=dist_sw_cat)) +
     geom_jitter(size=4, height = 0, width=2, aes(color = fire_intens_cat)) +

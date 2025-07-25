@@ -14,8 +14,9 @@ datadir = readLines(here("data_dir.txt"), n=1)
 
 
 # Load data
-d = read_csv(file.path(datadir,"field-data/processed/plot-data-prepped.csv"))
+d = read_csv(file.path(datadir,"field-data/processed/plot-data-prepped_v2.csv"))
 
+d = d |> rename(fire = "Fire")
 
 
 #### Constants
@@ -161,7 +162,7 @@ p2 = make_scenario_ggplot(scenario_preds, d_mods, "ppt", "Mean annual precipitat
 
 p = ggarrange(p1, p2 + rremove("ylab") + rremove("y.text"), common.legend = TRUE, widths = c(1.2,1))
 
-png(file.path(datadir, "figures/main_model_fits.png"), res = 350, width = 2000, height = 1100)
+png(file.path(datadir, "figures/main_model_fits_v2.png"), res = 350, width = 2000, height = 1100)
 p
 dev.off()
 
