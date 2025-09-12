@@ -44,8 +44,8 @@ optimizeCameras:
   adaptive_fitting: yes
 buildPointCloud:
   enabled: yes
-  downscale: 2
-  filter_mode: Metashape.ModerateFiltering
+  downscale: 4
+  filter_mode: Metashape.MildFiltering
   reuse_depth: no
   keep_depth: no
   max_neighbors: 100
