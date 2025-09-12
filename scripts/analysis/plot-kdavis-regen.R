@@ -1,3 +1,5 @@
+# Make Fig. S1 from the data published by Davis et al. (2023)
+
 library(tidyverse)
 library(here)
 
@@ -12,15 +14,15 @@ d = d |>
   mutate(dens_all = dens_ABLA + dens_ABCO_ABGR + dens_PIEN + dens_PIPO_PIJE + dens_PSME) |>
   mutate(dens_all = dens_all / 10000)
 
-
-min_nonzero = d[d$dens_all > 0, "dens_all"] |> min()
+## Set plots with 0 seedlings to a number that is nonzero but less than all observed seedling densities, so they can be plotted on log axis (will be labeled as 0)
 min_nonzero = .0001
 
 # include a random jitter
 d = d |>
   mutate(dens_all_nozero = ifelse(dens_all == 0, min_nonzero + runif(n = nrow(d), min = 0, max = .0004), dens_all))
 
-# remove observations that are >= 400 m because those can't be measured by laser, must be shorthand for not observed
+# Remove observations that are >= 400 m because those can't be measured by laser, must be shorthand for "not observed"
+# Filter to recent < 10 y, high-severity, and classify plots by large vs small
 d = d |>
   filter(distance_seed_source < 400) |>
   filter(time_since_fire < 10) |>
@@ -29,7 +31,6 @@ d = d |>
   mutate(plot_size_cat = factor(plot_size_cat, levels = c("All", "> 100 sq m"))) |>
   arrange(plot_size_cat) |>
   mutate(plot_size_cat = factor(plot_size_cat, levels = c("> 100 sq m", "All")))
-
 
 p = ggplot(d, aes(x = distance_seed_source, y = dens_all_nozero, color = plot_size_cat)) +
   geom_point(pch = 1) +
