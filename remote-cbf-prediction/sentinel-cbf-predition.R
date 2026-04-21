@@ -88,7 +88,10 @@ library(randomForest)
 ref_bands = band_names[! band_names %in% c("SCL", "B01", "B09")]
 nov_cols  = paste(paste0("nov_", ref_bands), collapse = " + ")
 idx_cols  = "nov_NDVI + nov_NBR"
-rf_formula = as.formula(paste("cbf10 ~", nov_cols, "+", idx_cols))
+rf_formula = as.formula(paste("cbf50 ~", nov_cols, "+", idx_cols))
+# # try NBR only
+# rf_formula = as.formula(paste("cbf50 ~", "nov_NBR"))
+
 
 rf_model = randomForest(rf_formula, data = plots, importance = TRUE, na.action = na.omit)
 rf_model
@@ -100,7 +103,10 @@ varImpPlot(rf_model)       # quick plot
 # Redo for June predictors
 jun_cols  = paste(paste0("jun_", ref_bands), collapse = " + ")
 idx_cols  = "jun_NDVI + jun_NBR"
-rf_formula = as.formula(paste("cbf10 ~", jun_cols, "+", idx_cols))
+rf_formula = as.formula(paste("cbf50 ~", jun_cols, "+", idx_cols))
+# # try NBR only
+# rf_formula = as.formula(paste("cbf50 ~", "jun_NBR"))
+
 
 rf_model_jun = randomForest(rf_formula, data = plots, importance = TRUE, na.action = na.omit)
 rf_model_jun
